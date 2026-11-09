@@ -15,7 +15,7 @@ interface ReRanker {
     suspend fun rerank(liked: List<RecItem>, candidates: List<ScoredItem>): List<ScoredItem>?
 }
 
-/** Default: no re-ranking. */
+/** No re-ranking (kept for tests and as a reference implementation). */
 @Singleton
 class LocalOnlyReRanker @Inject constructor() : ReRanker {
     override suspend fun rerank(liked: List<RecItem>, candidates: List<ScoredItem>): List<ScoredItem>? = null
@@ -25,5 +25,6 @@ class LocalOnlyReRanker @Inject constructor() : ReRanker {
 @InstallIn(SingletonComponent::class)
 abstract class ReRankerModule {
     @Binds
-    abstract fun bindReRanker(impl: LocalOnlyReRanker): ReRanker
+    /** Claude re-ranker; it returns null (local order) unless the user enabled it and saved a key. */
+    abstract fun bindReRanker(impl: ClaudeRecommender): ReRanker
 }

@@ -32,6 +32,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time & friends used by the Anthropic Java SDK on API 24/25.
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -41,7 +43,12 @@ android {
         buildConfig = true
     }
     packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            excludes += "/META-INF/DEPENDENCIES"
+            excludes += "/META-INF/INDEX.LIST"
+        }
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -99,6 +106,8 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.work.runtime)
     implementation(libs.palette)
+    implementation(libs.anthropic.java)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

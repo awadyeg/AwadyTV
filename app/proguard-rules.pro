@@ -10,3 +10,8 @@
 -keepattributes Signature, Exceptions
 -keep,allowobfuscation,allowshrinking interface retrofit2.Call
 -keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
+# Anthropic Java SDK (Jackson-based models)
+-keep class com.anthropic.** { *; }
+-dontwarn com.anthropic.**
+-dontwarn com.fasterxml.jackson.**
+-dontwarn java.lang.reflect.**
