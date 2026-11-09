@@ -63,7 +63,7 @@ fun GlassListRow(
     val focused by interaction.collectIsFocusedAsState()
     val currentOnFocus by rememberUpdatedState(onFocus)
     LaunchedEffect(focused) { if (focused) currentOnFocus?.invoke() }
-    val scale by animateFloatAsState(if (focused) 1.03f else 1f, AwadyMotion.liftSpring(), label = "rowScale")
+    val scale by animateFloatAsState(if (focused) 1.03f else 1f, tween(AwadyMotion.FOCUS_MS), label = "rowScale")
     val fill by animateColorAsState(
         when {
             focused -> AwadyColors.GlassFocused
@@ -81,7 +81,6 @@ fun GlassListRow(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-                shadowElevation = if (focused) 12.dp.toPx() else 0f
                 this.shape = shape
                 clip = true
             }

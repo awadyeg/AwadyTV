@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import com.awadytv.core.designsystem.Artwork
+import com.awadytv.core.designsystem.ChannelLogo
 import com.awadytv.core.designsystem.AwadyColors
 import com.awadytv.core.designsystem.AwadyDimens
 import com.awadytv.core.designsystem.AwadyType
@@ -161,15 +162,7 @@ fun ChannelRow(
         val primary = if (focused) AwadyColors.TextOnFocus else AwadyColors.TextPrimary
         val secondary = if (focused) AwadyColors.TextOnFocus.copy(alpha = 0.7f) else AwadyColors.TextSecondary
         val tertiary = if (focused) AwadyColors.TextOnFocus.copy(alpha = 0.5f) else AwadyColors.TextTertiary
-        Box(
-            Modifier
-                .size(width = 84.dp, height = 52.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (focused) Color(0x1A000000) else Color(0x1FFFFFFF)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Artwork(channel.icon, channel.name, Modifier.size(width = 72.dp, height = 42.dp), contentScale = ContentScale.Fit, showInitials = channel.icon.isNullOrBlank())
-        }
+        ChannelLogo(channel.icon, channel.name, Modifier.size(width = 84.dp, height = 52.dp), padding = 5.dp)
         Spacer(Modifier.width(14.dp))
         Text(channel.num.toString(), style = AwadyType.Label, color = secondary, modifier = Modifier.width(44.dp))
         Column(Modifier.weight(1f)) {

@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import com.awadytv.core.designsystem.Artwork
+import com.awadytv.core.designsystem.ChannelLogo
 import com.awadytv.core.designsystem.AwadyColors
 import com.awadytv.core.designsystem.AwadyDimens
 import com.awadytv.core.designsystem.AwadyType
@@ -188,12 +189,7 @@ private fun LiveOverlay(state: LivePlayerState) {
         elevation = 24.dp,
     ) {
         Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(width = 120.dp, height = 72.dp).clip(RoundedCornerShape(16.dp)).background(Color(0x26FFFFFF)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Artwork(channel.icon, channel.name, Modifier.size(width = 100.dp, height = 60.dp), contentScale = ContentScale.Fit, showInitials = channel.icon.isNullOrBlank())
-            }
+            ChannelLogo(channel.icon, channel.name, Modifier.size(width = 120.dp, height = 72.dp), padding = 8.dp)
             Spacer(Modifier.width(24.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

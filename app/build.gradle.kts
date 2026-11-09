@@ -27,6 +27,13 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        // Release-speed build (R8, no debuggable) signed with the debug key, for testing performance on
+        // a real TV. Debug builds of Compose run several times slower and are not representative.
+        create("qa") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
 
     compileOptions {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -177,15 +178,29 @@ fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel
 @Composable
 private fun Hero(hero: HeroItem, index: Int, count: Int, onPlay: () -> Unit, onInfo: () -> Unit, onFocus: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(400.dp)) {
-        Crossfade(targetState = hero, animationSpec = tween(700), label = "hero") { item ->
+        // Fill-rate budget: the artwork covers only the right 72% (the left sat under a 92% scrim anyway),
+        // and each scrim covers only the strip it fades, instead of three full-width 1080p layers.
+        Crossfade(
+            targetState = hero,
+            animationSpec = tween(500),
+            label = "hero",
+            modifier = Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight(),
+        ) { item ->
             Box(Modifier.fillMaxSize()) {
                 Artwork(item.backdrop, item.title, Modifier.fillMaxSize(), showInitials = false)
                 Box(
                     Modifier
-                        .fillMaxSize()
-                        .background(Brush.horizontalGradient(0f to AwadyColors.Canvas.copy(alpha = 0.92f), 0.6f to AwadyColors.Canvas.copy(alpha = 0.35f), 1f to Color.Transparent)),
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.6f)
+                        .background(Brush.horizontalGradient(0f to AwadyColors.Canvas, 0.45f to AwadyColors.Canvas.copy(alpha = 0.6f), 1f to Color.Transparent)),
                 )
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to AwadyColors.Canvas)))
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.4f)
+                        .background(Brush.verticalGradient(0f to Color.Transparent, 1f to AwadyColors.Canvas)),
+                )
             }
         }
         Column(

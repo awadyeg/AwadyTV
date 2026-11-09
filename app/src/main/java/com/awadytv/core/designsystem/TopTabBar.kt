@@ -65,6 +65,8 @@ fun TopTabBar(
     modifier: Modifier = Modifier,
     onFocusChanged: (Boolean) -> Unit = {},
     requestInitialFocus: Boolean = false,
+    /** Where D-pad Down from any tab goes. Full-bleed content that starts under the bar is not "below" it for focus search. */
+    contentFocusRequester: FocusRequester? = null,
 ) {
     val requesters = remember(tabs.size) { List(tabs.size) { FocusRequester() } }
     val bounds = remember { mutableStateMapOf<Int, Pair<Dp, Dp>>() }
@@ -75,8 +77,8 @@ fun TopTabBar(
 
     val pillIndex = if (focusedIndex >= 0) focusedIndex else selectedIndex
     val target = bounds[pillIndex]
-    val pillX by animateDpAsState(target?.first ?: 0.dp, AwadyMotion.liftSpring(), label = "pillX")
-    val pillW by animateDpAsState(target?.second ?: 0.dp, AwadyMotion.liftSpring(), label = "pillW")
+    val pillX by animateDpAsState(target?.first ?: 0.dp, tween(AwadyMotion.FOCUS_MS), label = "pillX")
+    val pillW by animateDpAsState(target?.second ?: 0.dp, tween(AwadyMotion.FOCUS_MS), label = "pillW")
     val isCollapsed = collapsed && !barFocused
     val height by animateDpAsState(if (isCollapsed) AwadyDimens.TabBarCollapsedHeight else AwadyDimens.TabBarHeight, tween(250), label = "barHeight")
     val labelAlpha by animateFloatAsState(if (isCollapsed) 0f else 1f, tween(180), label = "labelAlpha")
@@ -144,6 +146,7 @@ fun TopTabBar(
                                 }
                             }
                             .focusRequester(requesters[index])
+                            .focusProperties { if (contentFocusRequester != null) down = contentFocusRequester }
                             .clickable(interactionSource = interaction, indication = null) { onSelect(index) }
                             .padding(horizontal = 22.dp)
                             .graphicsLayer { alpha = labelAlpha },

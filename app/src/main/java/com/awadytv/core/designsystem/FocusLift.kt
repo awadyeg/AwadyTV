@@ -1,6 +1,5 @@
 package com.awadytv.core.designsystem
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -17,25 +16,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.launch
 
-private val FocusedBorderBrush = Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0x99FFFFFF)))
-private val RestingBorderBrush = Brush.linearGradient(listOf(Color(0x33FFFFFF), Color(0x08FFFFFF)))
+private val RestingBorder = Color(0x1AFFFFFF)
 
 /**
- * tvOS "lift" focus treatment shared by every focusable card:
- * - scales to 1.08 with spring (damping 0.7, stiffness 400), raises its shadow, gains a 2dp white glass border;
- * - siblings in the same shelf dim to 85 % ([LocalShelfFocused]);
- * - parallax tilt of +-4 degrees toward the D-pad direction that moved focus, 200ms, then settles;
- * - a specular sweep crosses the card when it gains focus.
+ * Focus treatment shared by every focusable card: a short 120ms scale-up and a solid white border.
+ * Only scale is animated, and it is applied in the draw phase (graphicsLayer lambda), so focus moves
+ * neither recompose nor relayout the card. [parallax], [specular] and [dimWithSiblings] are accepted
+ * for source compatibility and ignored: tilt, sweep, shadows and sibling dimming were too expensive
+ * on TV GPUs.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -46,97 +40,37 @@ fun FocusLift(
     onLongClick: (() -> Unit)? = null,
     onFocus: (() -> Unit)? = null,
     focusScale: Float = AwadyMotion.FOCUS_SCALE,
-    parallax: Boolean = true,
-    specular: Boolean = true,
-    dimWithSiblings: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") parallax: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") specular: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") dimWithSiblings: Boolean = false,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     val focused by interactionSource.collectIsFocusedAsState()
-    val performance = LocalPerformance.current
-    val tracker = LocalFocusDirection.current
     val currentOnFocus by rememberUpdatedState(onFocus)
-    val scale by animateFloatAsState(if (focused) focusScale else 1f, AwadyMotion.liftSpring(), label = "liftScale")
-    val shelfFocused = LocalShelfFocused.current
-    val alpha by animateFloatAsState(
-        if (dimWithSiblings && shelfFocused && !focused) AwadyMotion.DIMMED_ALPHA else 1f,
-        tween(200),
-        label = "liftDim",
-    )
-    val tiltX = remember { Animatable(0f) }
-    val tiltY = remember { Animatable(0f) }
-    val sweep = remember { Animatable(-1f) }
+    val scale = animateFloatAsState(if (focused) focusScale else 1f, tween(AwadyMotion.FOCUS_MS), label = "liftScale")
 
     LaunchedEffect(focused) {
-        if (focused) {
-            currentOnFocus?.invoke()
-            if (parallax && !performance.lowEnd) {
-                val t = AwadyMotion.TILT_DEGREES
-                val (targetX, targetY) = when (tracker.last) {
-                    MoveDirection.Left -> 0f to -t
-                    MoveDirection.Right -> 0f to t
-                    MoveDirection.Up -> t to 0f
-                    MoveDirection.Down -> -t to 0f
-                    MoveDirection.None -> 0f to 0f
-                }
-                launch {
-                    tiltX.animateTo(targetX, tween(AwadyMotion.TILT_MS))
-                    tiltX.animateTo(0f, tween(AwadyMotion.SETTLE_MS))
-                }
-                launch {
-                    tiltY.animateTo(targetY, tween(AwadyMotion.TILT_MS))
-                    tiltY.animateTo(0f, tween(AwadyMotion.SETTLE_MS))
-                }
-            }
-            if (specular) {
-                sweep.snapTo(-0.5f)
-                sweep.animateTo(1.5f, tween(AwadyMotion.SPECULAR_MS))
-            }
-        } else {
-            tiltX.snapTo(0f)
-            tiltY.snapTo(0f)
-            sweep.snapTo(-1f)
-        }
+        if (focused) currentOnFocus?.invoke()
     }
 
     Box(
         modifier
             .zIndex(if (focused) 1f else 0f)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                rotationX = tiltX.value
-                rotationY = tiltY.value
-                cameraDistance = 14f * density
-                this.alpha = alpha
-                shadowElevation = if (focused) 28.dp.toPx() else 2.dp.toPx()
+                scaleX = scale.value
+                scaleY = scale.value
+                // RenderNode outline clip: round rects take HWUI's fast path, unlike a clipPath per draw.
                 this.shape = shape
                 clip = true
             }
-            .border(if (focused) 2.dp else 1.dp, if (focused) FocusedBorderBrush else RestingBorderBrush, shape)
+            .border(if (focused) 3.dp else 1.dp, if (focused) AwadyColors.FocusBorder else RestingBorder, shape)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onLongClick = onLongClick,
                 onClick = onClick,
-            )
-            .drawWithContent {
-                drawContent()
-                val p = sweep.value
-                if (p > -0.5f && p < 1.5f) {
-                    val band = size.width * 0.5f
-                    val x = p * (size.width + band) - band
-                    drawRect(
-                        Brush.linearGradient(
-                            0f to Color.Transparent,
-                            0.5f to Color.White.copy(alpha = 0.22f),
-                            1f to Color.Transparent,
-                            start = Offset(x, 0f),
-                            end = Offset(x + band, size.height),
-                        ),
-                    )
-                }
-            },
+            ),
     ) {
         content(focused)
     }

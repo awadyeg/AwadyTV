@@ -22,6 +22,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import com.awadytv.core.designsystem.AwadyDimens
 import com.awadytv.core.designsystem.AwadyMotion
@@ -48,6 +51,7 @@ fun MainShell(
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var contentFocused by remember { mutableStateOf(false) }
+    val contentRequester = remember { FocusRequester() }
     val tab = MainTab.entries[selected]
 
     BackHandler(enabled = tab != MainTab.Home || onExit != null) {
@@ -63,7 +67,9 @@ fun MainShell(
             },
             modifier = Modifier
                 .fillMaxSize()
-                .onFocusChanged { contentFocused = it.hasFocus },
+                .onFocusChanged { contentFocused = it.hasFocus }
+                .focusRequester(contentRequester)
+                .focusGroup(),
             label = "tabContent",
         ) { current ->
             tabContent(current)
@@ -74,6 +80,7 @@ fun MainShell(
             onSelect = { selected = it },
             collapsed = contentFocused,
             requestInitialFocus = true,
+            contentFocusRequester = contentRequester,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = AwadyDimens.SafeVertical),

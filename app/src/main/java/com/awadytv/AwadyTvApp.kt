@@ -30,7 +30,7 @@ class AwadyTvApp : Application(), Configuration.Provider, SingletonImageLoader.F
         BackgroundWork.schedulePeriodic(this)
     }
 
-    /** Coil 3 with the shared OkHttp client, memory + disk cache and crossfade. */
+    /** Coil 3 with the shared OkHttp client and memory + disk cache. */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { okHttpClient })) }
@@ -41,6 +41,7 @@ class AwadyTvApp : Application(), Configuration.Provider, SingletonImageLoader.F
                     .maxSizeBytes(200L * 1024 * 1024)
                     .build()
             }
-            .crossfade(true)
+            // No crossfade: each fade draws two bitmaps for ~200ms of extra GPU frames on TV hardware.
+            .crossfade(false)
             .build()
 }

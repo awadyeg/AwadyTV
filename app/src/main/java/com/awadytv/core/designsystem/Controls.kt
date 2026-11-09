@@ -68,7 +68,7 @@ fun GlassButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) AwadyMotion.BUTTON_FOCUS_SCALE else 1f, AwadyMotion.liftSpring(), label = "btnScale")
+    val scale by animateFloatAsState(if (focused) AwadyMotion.BUTTON_FOCUS_SCALE else 1f, tween(AwadyMotion.FOCUS_MS), label = "btnScale")
     val restFill = when (variant) {
         GlassVariant.Tinted -> AwadyColors.Accent.copy(alpha = 0.6f)
         GlassVariant.Clear -> AwadyColors.GlassClear
@@ -83,7 +83,6 @@ fun GlassButton(
                 scaleX = scale
                 scaleY = scale
                 alpha = if (enabled) 1f else 0.45f
-                shadowElevation = if (focused) 18.dp.toPx() else 4.dp.toPx()
                 shape = PillShape
                 clip = true
             }
@@ -119,7 +118,7 @@ fun GlassIconButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.12f else 1f, AwadyMotion.liftSpring(), label = "iconBtnScale")
+    val scale by animateFloatAsState(if (focused) 1.12f else 1f, tween(AwadyMotion.FOCUS_MS), label = "iconBtnScale")
     val fill by animateColorAsState(if (focused) AwadyColors.GlassFocused else AwadyColors.GlassRegular, tween(150), label = "iconBtnFill")
     val tint = when {
         active -> activeTint
@@ -133,7 +132,6 @@ fun GlassIconButton(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-                shadowElevation = if (focused) 16.dp.toPx() else 2.dp.toPx()
                 shape = CircleShape
                 clip = true
             }
@@ -161,7 +159,7 @@ fun GlassChip(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     if (focused && onFocus != null) androidx.compose.runtime.LaunchedEffect(Unit) { onFocus() }
-    val scale by animateFloatAsState(if (focused) AwadyMotion.BUTTON_FOCUS_SCALE else 1f, AwadyMotion.liftSpring(), label = "chipScale")
+    val scale by animateFloatAsState(if (focused) AwadyMotion.BUTTON_FOCUS_SCALE else 1f, tween(AwadyMotion.FOCUS_MS), label = "chipScale")
     val fill = when {
         focused -> AwadyColors.GlassFocused
         selected -> Color(0x47FFFFFF)

@@ -33,8 +33,8 @@ data class PerformanceProfile(
             val lowRam = am?.isLowRamDevice ?: true
             val memClassSmall = (am?.memoryClass ?: 0) in 1..191
             val lowEnd = forceLowEnd || lowRam || memClassSmall
-            val blur = !forceLowEnd && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !lowRam
-            return PerformanceProfile(runtimeBlur = blur, lowEnd = lowEnd)
+            // Runtime blur is never used: it dropped TV GPUs to single-digit fps.
+            return PerformanceProfile(runtimeBlur = false, lowEnd = lowEnd)
         }
     }
 }

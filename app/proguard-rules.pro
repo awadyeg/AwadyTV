@@ -15,3 +15,5 @@
 -dontwarn com.anthropic.**
 -dontwarn com.fasterxml.jackson.**
 -dontwarn java.lang.reflect.**
+# OpenTelemetry (pulled in by the Anthropic SDK) references compile-only annotations.
+-dontwarn com.google.auto.value.**

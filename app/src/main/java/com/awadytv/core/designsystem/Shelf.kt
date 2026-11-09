@@ -1,7 +1,5 @@
 package com.awadytv.core.designsystem
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,25 +9,22 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
-import kotlinx.coroutines.launch
 
 /**
  * A horizontal shelf: uppercase tracked header and a lazily composed row of cards.
- * The row restores focus to the last focused card, dims unfocused siblings, and fades + slides in (24dp, 350ms).
+ * The row restores focus to the last focused card. No enter animation: fading a whole shelf in needs an
+ * offscreen alpha layer, which caused the slowest frames while scrolling on TV GPUs.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -45,23 +40,8 @@ fun <T> Shelf(
     val performance = LocalPerformance.current
     val visible = if (capItems) items.take(performance.shelfItemCap) else items
     var rowFocused by remember { mutableStateOf(false) }
-    var entered by rememberSaveable(title) { mutableStateOf(false) }
-    val alpha = remember { Animatable(if (entered) 1f else 0f) }
-    val offset = remember { Animatable(if (entered) 0f else 1f) }
-    LaunchedEffect(Unit) {
-        if (!entered) {
-            launch { alpha.animateTo(1f, tween(AwadyMotion.SHELF_ENTER_MS)) }
-            offset.animateTo(0f, tween(AwadyMotion.SHELF_ENTER_MS))
-            entered = true
-        }
-    }
     Column(
-        modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                this.alpha = alpha.value
-                translationY = offset.value * AwadyMotion.SHELF_ENTER_OFFSET.toPx()
-            },
+        modifier.fillMaxWidth(),
     ) {
         Text(
             title.uppercase(),

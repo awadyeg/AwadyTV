@@ -13,7 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -35,7 +40,10 @@ private val placeholderGradients = listOf(
     listOf(Color(0xFF123B5C), Color(0xFF0B0B0F)),
 )
 
-/** Artwork with a deterministic gradient + initials placeholder underneath (shown while loading or on error). */
+/**
+ * Artwork with a deterministic gradient + initials placeholder, drawn only until the image loads (or when
+ * it fails). The placeholder used to stay under every loaded image, doubling the GPU fill of every card.
+ */
 @Composable
 fun Artwork(
     url: String?,
@@ -44,9 +52,10 @@ fun Artwork(
     contentScale: ContentScale = ContentScale.Crop,
     showInitials: Boolean = true,
 ) {
-    val gradient = placeholderGradients[title.hashCode().absoluteValue % placeholderGradients.size]
-    Box(modifier.background(Brush.linearGradient(gradient)), contentAlignment = Alignment.Center) {
-        if (showInitials) {
+    var loaded by remember(url) { mutableStateOf(false) }
+    val placeholder = if (loaded) Modifier else Modifier.background(Brush.linearGradient(placeholderGradients[title.hashCode().absoluteValue % placeholderGradients.size]))
+    Box(modifier.then(placeholder), contentAlignment = Alignment.Center) {
+        if (showInitials && !loaded) {
             Text(
                 text = title.initials(),
                 style = AwadyType.Title,
@@ -59,7 +68,38 @@ fun Artwork(
                 model = url,
                 contentDescription = title,
                 contentScale = contentScale,
+                onSuccess = { loaded = true },
+                onError = { loaded = false },
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/**
+ * Channel logo on a solid neutral tile. Logos come in every aspect ratio (mostly square, often with
+ * transparency), so the logo is fitted inside padding on one flat colour; the gradient + initials
+ * placeholder only appears when there is no logo or it fails to load (it used to show through as
+ * coloured bands on both sides of every fitted logo).
+ */
+@Composable
+fun ChannelLogo(url: String?, name: String, modifier: Modifier = Modifier, padding: Dp = 6.dp) {
+    var failed by remember(url) { mutableStateOf(url.isNullOrBlank()) }
+    Box(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (failed) Brush.linearGradient(placeholderGradients[name.hashCode().absoluteValue % placeholderGradients.size]) else SolidColor(AwadyColors.LogoTile)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (failed) {
+            Text(name.initials(), style = AwadyType.Label, color = Color(0xB3FFFFFF), textAlign = TextAlign.Center, maxLines = 1)
+        } else {
+            AsyncImage(
+                model = url,
+                contentDescription = name,
+                contentScale = ContentScale.Fit,
+                onError = { failed = true },
+                modifier = Modifier.fillMaxSize().padding(padding),
             )
         }
     }
@@ -208,9 +248,7 @@ fun ChannelCard(
                 .width(176.dp)
                 .height(99.dp),
         ) {
-            Box(Modifier.fillMaxSize().background(AwadyColors.GlassRegular), contentAlignment = Alignment.Center) {
-                Artwork(logoUrl, name, Modifier.size(width = 120.dp, height = 68.dp).background(Color.Transparent), contentScale = ContentScale.Fit, showInitials = logoUrl.isNullOrBlank())
-            }
+            ChannelLogo(logoUrl, name, Modifier.fillMaxSize(), padding = 14.dp)
             if (number != null) {
                 Text(
                     number.toString(),

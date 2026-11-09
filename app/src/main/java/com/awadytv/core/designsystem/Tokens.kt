@@ -20,7 +20,12 @@ object AwadyColors {
     val Warning = Color(0xFFFFD60A)
     val Like = Color(0xFFFF375F)
 
-    /** Glass fills: white at 10-14 % over the blurred backdrop. */
+    /** Flat surfaces (replaced Liquid Glass for speed on low-end TVs). Opaque so nothing behind needs drawing. */
+    val Surface = Color(0xFF1C1C24)
+    val SurfaceClear = Color(0xCC111118)
+    val Hairline = Color(0x1FFFFFFF)
+    val LogoTile = Color(0xFF2A2A34)
+
     val GlassRegular = Color(0x24FFFFFF) // 14 %
     val GlassClear = Color(0x14FFFFFF) // 8 %
     val GlassFocused = Color(0xE6FFFFFF) // tvOS focused control: near-solid white
@@ -55,7 +60,8 @@ object AwadyDimens {
 }
 
 object AwadyMotion {
-    const val FOCUS_SCALE = 1.08f
+    const val FOCUS_SCALE = 1.06f
+    const val FOCUS_MS = 120
     const val BUTTON_FOCUS_SCALE = 1.06f
     const val DIMMED_ALPHA = 0.85f
     const val TILT_DEGREES = 4f
