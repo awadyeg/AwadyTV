@@ -47,7 +47,7 @@ fun AwadyRoot() {
                     },
             ) {
                 AppBackdrop(controller = backdrop, glass = glass)
-                MainShell()
+                AppNavHost()
             }
         }
     }

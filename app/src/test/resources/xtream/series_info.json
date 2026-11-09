@@ -1,0 +1,8 @@
+{"seasons":[{"air_date":"2017-12-01","episode_count":10,"id":1001,"name":"Season 1","overview":"","season_number":1,"cover":"http://img.example/s1.jpg"},{"air_date":"2019-06-21","episode_count":"8","id":"1002","name":"Season 2","season_number":"2"}],
+ "info":{"name":"Dark","cover":"http://img.example/dark.jpg","plot":"A family saga","cast":"Louis Hofmann","director":"Baran bo Odar","genre":"Drama, Mystery","releaseDate":"2017-12-01","last_modified":"1700000500","rating":"8.7","backdrop_path":["http://img.example/dark_bd.jpg"],"episode_run_time":"60","category_id":"20"},
+ "episodes":{
+   "2":[{"id":"9021","episode_num":2,"title":"Dark - S02E02","container_extension":"mkv","info":{"movie_image":"http://img.example/e22.jpg","plot":"Plot 2x2","duration_secs":3300,"duration":"00:55:00","rating":8.1,"releasedate":"2019-06-21"},"custom_sid":"","added":"1700000600","season":2,"direct_source":""},
+         {"id":"9020","episode_num":"1","title":"Dark - S02E01","container_extension":"mkv","info":[],"season":"2"}],
+   "1":[{"id":9011,"episode_num":1,"title":"Secrets","container_extension":"mp4","info":{"movie_image":"","plot":"Plot 1x1","duration":"00:51:00"},"season":1},
+         {"id":9012,"episode_num":2,"title":"Lies","container_extension":"mp4","info":{"duration_secs":"2900"}}]
+ }}

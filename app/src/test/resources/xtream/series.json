@@ -1,0 +1,4 @@
+[
+ {"num":1,"name":"Dark","series_id":301,"cover":"http://img.example/dark.jpg","plot":"A family saga with a supernatural twist","cast":"Louis Hofmann, Oliver Masucci","director":"Baran bo Odar","genre":"Drama, Mystery, Sci-Fi","releaseDate":"2017-12-01","last_modified":"1700000500","rating":"8.7","rating_5based":4.35,"backdrop_path":"http://img.example/dark_bd.jpg","youtube_trailer":"","episode_run_time":"60","category_id":"20"},
+ {"num":2,"name":"Untitled","series_id":"302","cover":"","backdrop_path":[],"rating":null,"category_id":20}
+]
