@@ -89,7 +89,10 @@ fun LivePlayerScreen(navigator: AppNavigator, viewModel: LivePlayerViewModel = h
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = !state.sheetVisible) { navigator.back() }
+    // Back hides the channel banner first, then leaves the player. The channel list sheet has its own handler.
+    BackHandler(enabled = !state.sheetVisible) {
+        if (state.overlayVisible && state.error == null) viewModel.hideOverlay() else navigator.back()
+    }
     LaunchedEffect(state.sheetVisible, state.error) {
         if (!state.sheetVisible) runCatching { if (state.error != null) retryFocus.requestFocus() else rootFocus.requestFocus() }
     }
@@ -106,10 +109,7 @@ fun LivePlayerScreen(navigator: AppNavigator, viewModel: LivePlayerViewModel = h
                     Key.DirectionDown, Key.ChannelDown -> { viewModel.zap(-1); true }
                     Key.DirectionLeft -> { viewModel.setSheetVisible(true); true }
                     Key.DirectionRight, Key.Info -> { viewModel.showOverlay(); true }
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                        if (state.overlayVisible) viewModel.setSheetVisible(true) else viewModel.showOverlay()
-                        true
-                    }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { viewModel.setSheetVisible(true); true }
                     Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> { viewModel.togglePlayPause(); true }
                     Key.ProgramRed, Key.Bookmark -> { viewModel.toggleFavourite(); true }
                     else -> {
@@ -213,7 +213,7 @@ private fun LiveOverlay(state: LivePlayerState) {
                 state.nowNext?.next?.let { next ->
                     Text("Next  ${TimeFormat.clock(next.start)}  ${next.title}", style = AwadyType.Caption, color = AwadyColors.TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text("▲▼ change channel   ◀ channel list   OK again for list   red: favourite", style = AwadyType.Caption, color = AwadyColors.TextTertiary)
+                Text("▲▼ change channel   OK / ◀ channel list   red: favourite", style = AwadyType.Caption, color = AwadyColors.TextTertiary)
             }
             Spacer(Modifier.width(24.dp))
             Text(TimeFormat.clock(state.now), style = AwadyType.Title, color = AwadyColors.TextPrimary)

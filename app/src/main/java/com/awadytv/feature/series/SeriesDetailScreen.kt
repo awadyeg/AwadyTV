@@ -16,6 +16,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Theaters
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Movie
@@ -92,6 +95,7 @@ data class SeriesDetailState(
     val selectedSeason: Int? = null,
     val progress: Map<Long, WatchProgress> = emptyMap(),
     val liked: Boolean = false,
+    val disliked: Boolean = false,
     val favourite: Boolean = false,
     val related: List<PosterItem> = emptyList(),
 ) {
@@ -144,6 +148,7 @@ class SeriesDetailViewModel @Inject constructor(
             }
             launch { library.observeSeriesProgress(s.profileId, seriesId).collect { v -> _state.update { it.copy(progress = v) } } }
             launch { library.isLiked(s.profileId, ContentKind.SERIES, seriesId).collect { v -> _state.update { it.copy(liked = v) } } }
+            launch { library.isDisliked(s.profileId, ContentKind.SERIES, seriesId).collect { v -> _state.update { it.copy(disliked = v) } } }
             launch { library.isFavourite(s.profileId, ContentKind.SERIES, seriesId).collect { v -> _state.update { it.copy(favourite = v) } } }
             launch { _state.update { it.copy(related = recommendations.moreLikeThis(s.profileId, ContentKind.SERIES, seriesId)) } }
             loadEpisodes(force = false)
@@ -166,6 +171,11 @@ class SeriesDetailViewModel @Inject constructor(
     fun toggleLike() {
         val s = session ?: return
         viewModelScope.launch { library.setLiked(s.profileId, ContentKind.SERIES, seriesId, !_state.value.liked) }
+    }
+
+    fun toggleDislike() {
+        val s = session ?: return
+        viewModelScope.launch { library.setDisliked(s.profileId, ContentKind.SERIES, seriesId, !_state.value.disliked) }
     }
 
     fun toggleFavourite() {
@@ -225,6 +235,13 @@ fun SeriesDetailScreen(navigator: AppNavigator, viewModel: SeriesDetailViewModel
                                 onClick = viewModel::toggleLike,
                             )
                             GlassIconButton(
+                                icon = if (state.disliked) Icons.Rounded.ThumbDown else Icons.Outlined.ThumbDown,
+                                contentDescription = if (state.disliked) "Remove dislike" else "Not for me",
+                                active = state.disliked,
+                                activeTint = AwadyColors.TextPrimary,
+                                onClick = viewModel::toggleDislike,
+                            )
+                            GlassIconButton(
                                 icon = if (state.favourite) Icons.Rounded.Star else Icons.Rounded.StarOutline,
                                 contentDescription = if (state.favourite) "Remove from favourites" else "Add to favourites",
                                 active = state.favourite,
@@ -232,7 +249,7 @@ fun SeriesDetailScreen(navigator: AppNavigator, viewModel: SeriesDetailViewModel
                                 onClick = viewModel::toggleFavourite,
                             )
                             series.trailer?.takeIf { it.isNotBlank() }?.let { trailer ->
-                                GlassButton(text = "Trailer", icon = Icons.Rounded.Movie, onClick = { openTrailer(context, trailer) })
+                                GlassIconButton(Icons.Rounded.Theaters, "Trailer", onClick = { openTrailer(context, trailer) })
                             }
                         },
                     )

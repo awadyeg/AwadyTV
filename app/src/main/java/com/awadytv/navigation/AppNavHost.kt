@@ -31,7 +31,12 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
         popExitTransition = { exit },
     ) {
         composable<StartRoute> {
-            StartScreen(onResolved = { dest -> navController.navigate(dest) { popUpTo(StartRoute) { inclusive = true } } })
+            StartScreen(
+                onResolved = { decision ->
+                    navController.navigate(decision.destination) { popUpTo(StartRoute) { inclusive = true } }
+                    decision.resume?.let { navController.navigate(it) }
+                },
+            )
         }
         composable<LoginRoute> {
             LoginScreen(onSignedIn = { id, needsSync -> navigator.afterSignIn(id, needsSync) })
@@ -45,7 +50,7 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
         composable<MainRoute> {
             val context = LocalContext.current
             LaunchedEffect(Unit) { BackgroundWork.refreshCatalogIfStale(context) }
-            MainShell(tabContent = { tab -> TabContent(tab, navigator) })
+            MainShell(tabContent = { tab, openKeyboard, onKeyboardOpened -> TabContent(tab, navigator, openKeyboard, onKeyboardOpened) })
         }
         detailAndPlayerDestinations(navigator)
     }

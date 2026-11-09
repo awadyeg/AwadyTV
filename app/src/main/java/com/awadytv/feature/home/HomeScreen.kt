@@ -40,7 +40,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -70,6 +81,7 @@ import com.awadytv.domain.ContentKind
 import com.awadytv.navigation.AppNavigator
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -78,6 +90,9 @@ fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel
     LaunchedEffect(Unit) { viewModel.messages.collect { toast.show(it) } }
 
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val listState = rememberLazyListState()
+    val rowScrollSpec = LocalBringIntoViewSpec.current
+    val scope = rememberCoroutineScope()
     var heroIndex by rememberSaveable { mutableIntStateOf(0) }
     // Hero auto-rotates among (up to) 5 items every 8s while the user is idle.
     LaunchedEffect(state.hero.size) {
@@ -102,7 +117,8 @@ fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel
                 message = "Your provider returned no movies, series or channels. Refresh the catalog from Settings.",
                 icon = Icons.AutoMirrored.Rounded.LibraryBooks,
             )
-            else -> LazyColumn(
+            else -> CompositionLocalProvider(LocalBringIntoViewSpec provides CalmVerticalScroll) { LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = AwadyDimens.SafeVertical + 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -118,11 +134,23 @@ fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel
                                 if (hero.kind == ContentKind.MOVIE) navigator.playMovie(hero.id) else navigator.openSeries(hero.id)
                             },
                             onInfo = { if (hero.kind == ContentKind.MOVIE) navigator.openMovie(hero.id) else navigator.openSeries(hero.id) },
-                            onFocus = { backdrop.show(hero.backdrop) },
+                            onFocus = {
+                                backdrop.show(hero.backdrop)
+                                // Coming back up to the hero shows the whole top of the page, not just its buttons.
+                                scope.launch {
+                                    delay(60) // after the focus change's own bring-into-view
+                                    listState.animateScrollToItem(0)
+                                }
+                            },
+                            // Left on the first button / Right on the last flips through the carousel.
+                            onPrevious = { heroIndex = (heroIndex - 1).mod(state.hero.size) },
+                            onNext = { heroIndex = (heroIndex + 1).mod(state.hero.size) },
                         )
                     }
                 }
                 items(state.shelves, key = { it.id }) { shelf ->
+                    // Rows keep the platform's horizontal behaviour.
+                    CompositionLocalProvider(LocalBringIntoViewSpec provides rowScrollSpec) {
                     when (shelf) {
                         is HomeShelf.ContinueWatching -> Shelf(title = shelf.title, items = shelf.items, key = { "${it.kind}:${it.itemId}" }) { p ->
                             val remaining = (p.durationMs - p.positionMs).coerceAtLeast(0)
@@ -161,6 +189,9 @@ fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel
                                 title = item.title,
                                 imageUrl = item.image,
                                 caption = if (shelf.id == RecommendationEngine.SHELF_RECOMMENDED) item.caption else null,
+                                // Same height for every card in the row: captions of 1 vs 2 lines made the row
+                                // resize as cards scrolled in, shaking everything below it.
+                                captionLines = if (shelf.id == RecommendationEngine.SHELF_RECOMMENDED) 2 else 0,
                                 badge = item.badge,
                                 onFocus = { backdrop.show(item.backdrop ?: item.image) },
                                 onClick = { if (item.kind == ContentKind.MOVIE) navigator.openMovie(item.id) else navigator.openSeries(item.id) },
@@ -168,15 +199,34 @@ fun HomeScreen(navigator: AppNavigator, viewModel: HomeViewModel = hiltViewModel
                             )
                         }
                     }
+                    }
                 }
-            }
+            } }
         }
         GlassToastHost(toast, Modifier.align(Alignment.BottomCenter).padding(bottom = AwadyDimens.SafeVertical + 8.dp))
     }
 }
 
+/**
+ * Home's vertical scrolling: leave the page still while the focused card is comfortably on screen, and
+ * otherwise scroll only as far as needed. The TV default pins every focused item at a fixed height, which
+ * cut the hero off when entering it and nudged the page on every move.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private object CalmVerticalScroll : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val top = containerSize * 0.14f
+        val bottom = containerSize * 0.96f
+        return when {
+            offset >= top && offset + size <= bottom -> 0f
+            offset < top || size > bottom - top -> offset - top
+            else -> offset + size - bottom
+        }
+    }
+}
+
 @Composable
-private fun Hero(hero: HeroItem, index: Int, count: Int, onPlay: () -> Unit, onInfo: () -> Unit, onFocus: () -> Unit) {
+private fun Hero(hero: HeroItem, index: Int, count: Int, onPlay: () -> Unit, onInfo: () -> Unit, onFocus: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(400.dp)) {
         // Fill-rate budget: the artwork covers only the right 72% (the left sat under a 92% scrim anyway),
         // and each scrim covers only the strip it fades, instead of three full-width 1080p layers.
@@ -224,8 +274,8 @@ private fun Hero(hero: HeroItem, index: Int, count: Int, onPlay: () -> Unit, onI
             if (!hero.plot.isNullOrBlank()) Text(hero.plot, style = AwadyType.Body, color = AwadyColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                HeroButton(if (hero.kind == ContentKind.MOVIE) "Play" else "Episodes", Icons.Rounded.PlayArrow, GlassVariant.Tinted, onPlay, onFocus)
-                HeroButton("More info", Icons.Rounded.Info, GlassVariant.Regular, onInfo, onFocus)
+                HeroButton(if (hero.kind == ContentKind.MOVIE) "Play" else "Episodes", Icons.Rounded.PlayArrow, GlassVariant.Tinted, onPlay, onFocus, onLeft = onPrevious.takeIf { count > 1 })
+                HeroButton("More info", Icons.Rounded.Info, GlassVariant.Regular, onInfo, onFocus, onRight = onNext.takeIf { count > 1 })
                 Spacer(Modifier.width(12.dp))
                 repeat(count) { i ->
                     Box(
@@ -241,8 +291,27 @@ private fun Hero(hero: HeroItem, index: Int, count: Int, onPlay: () -> Unit, onI
 }
 
 @Composable
-private fun HeroButton(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, variant: GlassVariant, onClick: () -> Unit, onFocus: () -> Unit) {
-    Box(Modifier.onFocusEvent { if (it.hasFocus) onFocus() }) {
+private fun HeroButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    variant: GlassVariant,
+    onClick: () -> Unit,
+    onFocus: () -> Unit,
+    onLeft: (() -> Unit)? = null,
+    onRight: (() -> Unit)? = null,
+) {
+    Box(
+        Modifier
+            .onFocusEvent { if (it.hasFocus) onFocus() }
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when {
+                    event.key == Key.DirectionLeft && onLeft != null -> { onLeft(); true }
+                    event.key == Key.DirectionRight && onRight != null -> { onRight(); true }
+                    else -> false
+                }
+            },
+    ) {
         GlassButton(text = text, icon = icon, variant = variant, onClick = onClick)
     }
 }

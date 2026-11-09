@@ -9,13 +9,13 @@ import com.awadytv.feature.settings.SettingsScreen
 import com.awadytv.feature.series.SeriesScreen
 
 @Composable
-fun TabContent(tab: MainTab, navigator: AppNavigator) {
+fun TabContent(tab: MainTab, navigator: AppNavigator, openSearchKeyboard: Boolean = false, onSearchKeyboardOpened: () -> Unit = {}) {
     when (tab) {
         MainTab.Home -> HomeScreen(navigator)
         MainTab.Live -> LiveScreen(navigator)
         MainTab.Movies -> MoviesScreen(navigator)
         MainTab.Series -> SeriesScreen(navigator)
-        MainTab.Search -> SearchScreen(navigator)
+        MainTab.Search -> SearchScreen(navigator, openKeyboard = openSearchKeyboard, onKeyboardOpened = onSearchKeyboardOpened)
         MainTab.Settings -> SettingsScreen(navigator)
     }
 }

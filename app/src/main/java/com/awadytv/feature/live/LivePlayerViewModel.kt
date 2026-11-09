@@ -184,7 +184,7 @@ class LivePlayerViewModel @Inject constructor(
         _state.update { it.copy(overlayVisible = true) }
         overlayJob?.cancel()
         overlayJob = viewModelScope.launch {
-            delay(5_000)
+            delay(OVERLAY_MS)
             if (_state.value.error == null) _state.update { it.copy(overlayVisible = false) }
         }
     }
@@ -234,6 +234,11 @@ class LivePlayerViewModel @Inject constructor(
             it.release()
         }
         _player.value = null
+    }
+
+    private companion object {
+        /** Channel banner auto-hide. */
+        const val OVERLAY_MS = 4_000L
     }
 
     private fun describe(error: PlaybackException): String = when (error.errorCode) {

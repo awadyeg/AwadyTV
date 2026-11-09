@@ -50,7 +50,7 @@ fun GlassSideSheet(
                     .width(width)
                     .fillMaxHeight(),
                 shape = RoundedCornerShape(AwadyDimens.RadiusXL),
-                fillOverride = Color(0x40141420),
+                fillOverride = Color(0xF2141418),
             ) {
                 Column(Modifier.fillMaxSize().padding(20.dp), content = content)
             }
@@ -73,7 +73,7 @@ fun GlassDialog(
             .background(Color(0xB3000000)),
         contentAlignment = Alignment.Center,
     ) {
-        GlassSurface(modifier = modifier.widthIn(min = 420.dp, max = 640.dp), shape = RoundedCornerShape(AwadyDimens.RadiusXL), fillOverride = Color(0x33202030)) {
+        GlassSurface(modifier = modifier.widthIn(min = 420.dp, max = 640.dp), shape = RoundedCornerShape(AwadyDimens.RadiusXL), fillOverride = Color(0xF21C1C24)) {
             Column(Modifier.padding(32.dp)) {
                 Text(title, style = AwadyType.Title, color = AwadyColors.TextPrimary, modifier = Modifier.padding(bottom = 16.dp))
                 content()

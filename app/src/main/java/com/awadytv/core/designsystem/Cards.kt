@@ -140,6 +140,8 @@ fun PosterCard(
     badge: String? = null,
     onFocus: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    /** Reserve this many caption lines even when [caption] is shorter or missing, so a row keeps one height. */
+    captionLines: Int = 0,
 ) {
     Column(modifier.width(width), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         FocusLift(
@@ -175,8 +177,8 @@ fun PosterCard(
             }
         }
         Text(title, style = AwadyType.Caption.copy(fontSize = AwadyType.Label.fontSize), color = AwadyColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (!caption.isNullOrBlank()) {
-            Text(caption, style = AwadyType.Caption, color = AwadyColors.TextTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (!caption.isNullOrBlank() || captionLines > 0) {
+            Text(caption.orEmpty(), style = AwadyType.Caption, color = AwadyColors.TextTertiary, minLines = captionLines.coerceAtLeast(1), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

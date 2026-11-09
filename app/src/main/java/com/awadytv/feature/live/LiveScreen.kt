@@ -56,6 +56,7 @@ import com.awadytv.core.util.TimeFormat
 import com.awadytv.data.repository.LiveRepository
 import com.awadytv.domain.Channel
 import com.awadytv.domain.NowNext
+import com.awadytv.feature.common.CategoryRail
 import com.awadytv.navigation.AppNavigator
 import kotlinx.coroutines.delay
 
@@ -76,34 +77,17 @@ fun LiveScreen(navigator: AppNavigator, viewModel: LiveViewModel = hiltViewModel
             .fillMaxSize()
             .padding(start = AwadyDimens.SafeHorizontal, end = AwadyDimens.SafeHorizontal, top = AwadyDimens.ContentTop, bottom = AwadyDimens.SafeVertical),
     ) {
-        GlassSurface(
+        CategoryRail(
+            title = "Live TV",
+            loading = state.loadingCategories,
+            categories = state.categories,
+            selectedId = state.selectedCategoryId,
+            adultLocked = state.adultLocked,
+            onSelect = viewModel::select,
+            onDwell = { dwellCategory = it },
+            onMove = viewModel::moveCategory,
             modifier = Modifier.width(AwadyDimens.SideRailWidth).fillMaxHeight(),
-            shape = RoundedCornerShape(AwadyDimens.RadiusXL),
-        ) {
-            Column(Modifier.fillMaxSize().padding(12.dp)) {
-                Text("LIVE TV", style = AwadyType.ShelfHeader, color = AwadyColors.TextSecondary, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp))
-                if (state.loadingCategories) {
-                    LoadingView()
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().focusRestorer(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp),
-                    ) {
-                        items(state.categories, key = { it.id }) { category ->
-                            val locked = category.isAdult && state.adultLocked
-                            RailItem(
-                                title = category.name,
-                                selected = category.id == state.selectedCategoryId,
-                                locked = locked,
-                                onClick = { viewModel.select(category.id) },
-                                onFocus = { if (!locked) dwellCategory = category.id },
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        )
         Spacer(Modifier.width(24.dp))
         Column(Modifier.weight(1f).fillMaxHeight()) {
             val title = state.categories.firstOrNull { it.id == state.selectedCategoryId }?.name ?: "Channels"

@@ -94,7 +94,7 @@ fun DetailHeader(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
             extra?.invoke(this)
         }
     }
@@ -102,12 +102,18 @@ fun DetailHeader(
 
 fun metaLine(vararg parts: String?): String = parts.filter { !it.isNullOrBlank() }.joinToString("  ·  ")
 
-/** Opens a YouTube trailer in the YouTube app (or any browser) if one is installed. */
+/**
+ * Plays a YouTube trailer. The YouTube TV app only starts playback for a watch URL sent to it directly;
+ * "vnd.youtube:" just opens its home / profile picker, so that is the last resort.
+ */
 fun openTrailer(context: Context, youtubeId: String) {
-    val id = youtubeId.substringAfter("v=").substringAfterLast('/').trim()
+    val id = youtubeId.substringAfter("v=").substringBefore('&').substringAfterLast('/').trim()
+    val watch = Uri.parse("https://www.youtube.com/watch?v=$id")
     val intents = listOf(
+        Intent(Intent.ACTION_VIEW, watch).setPackage("com.google.android.youtube.tv"),
+        Intent(Intent.ACTION_VIEW, watch).setPackage("com.google.android.youtube"),
+        Intent(Intent.ACTION_VIEW, watch),
         Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$id")),
-        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id")),
     )
     for (intent in intents) {
         try {

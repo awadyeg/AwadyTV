@@ -252,6 +252,9 @@ interface FavouriteDao {
     @Query("DELETE FROM favourites WHERE profileId = :profileId AND kind = :kind AND itemId = :itemId")
     suspend fun delete(profileId: Long, kind: String, itemId: Long)
 
+    @Query("SELECT * FROM favourites WHERE profileId = :profileId ORDER BY addedAt DESC")
+    suspend fun all(profileId: Long): List<FavouriteEntity>
+
     @Query("DELETE FROM favourites WHERE profileId = :profileId")
     suspend fun clear(profileId: Long)
 }
@@ -324,6 +327,9 @@ interface RecommendationDao {
 
     @Query("SELECT MAX(computedAt) FROM recommendations WHERE profileId = :profileId")
     suspend fun lastComputedAt(profileId: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM recommendations WHERE profileId = :profileId AND shelf LIKE 'foryou:%'")
+    suspend fun forYouCount(profileId: Long): Int
 
     @Query("DELETE FROM recommendations WHERE profileId = :profileId")
     suspend fun clear(profileId: Long)

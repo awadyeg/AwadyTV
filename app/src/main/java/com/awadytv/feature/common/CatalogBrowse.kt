@@ -45,10 +45,13 @@ import com.awadytv.core.designsystem.LocalBackdrop
 import com.awadytv.core.designsystem.PinDialog
 import com.awadytv.core.designsystem.PosterCard
 import com.awadytv.core.designsystem.RailItem
+import com.awadytv.core.datastore.SettingsRepository
 import com.awadytv.core.security.ParentalGate
+import com.awadytv.data.recommendations.RecommendationRepository
 import com.awadytv.data.repository.LibraryRepository
 import com.awadytv.data.repository.ProfileRepository
 import com.awadytv.domain.Category
+import com.awadytv.domain.applyCategoryOrder
 import com.awadytv.domain.ContentKind
 import com.awadytv.domain.PosterItem
 import com.awadytv.domain.Session
@@ -61,6 +64,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -75,12 +79,18 @@ data class BrowseUiState(
     val pinPromptFor: Category? = null,
 )
 
-/** Shared logic of the Movies and Series tabs: category rail + poster grid, offline-first from Room. */
+/**
+ * Shared logic of the Movies and Series tabs: category rail + poster grid, offline-first from Room.
+ * The rail starts with "For you" (the recommendation engine's ranking of this tab's catalog) when AI
+ * recommendations are on, and the user can reorder it (hold OK on a category).
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 abstract class CatalogBrowseViewModel(
     private val profiles: ProfileRepository,
     private val library: LibraryRepository,
     private val parental: ParentalGate,
+    private val settings: SettingsRepository,
+    private val recommendations: RecommendationRepository,
     private val kind: ContentKind,
     private val recentId: String,
     private val recentLabel: String,
@@ -99,18 +109,20 @@ abstract class CatalogBrowseViewModel(
         viewModelScope.launch {
             profiles.session.filterNotNull().flatMapLatest { s ->
                 session = s
-                categoriesFlow(s.profileId)
-            }.collect { cats ->
-                val all = listOf(Category(recentId, recentLabel, false)) + cats
-                _state.update { it.copy(loadingCategories = false, categories = all) }
-                if (selected.value == null) select(recentId)
+                combine(categoriesFlow(s.profileId), settings.categoryOrder(s.profileId, kind.key), settings.settings.map { it.aiRecommendations }) { cats, order, ai ->
+                    val virtual = listOfNotNull(Category(FOR_YOU, "For you", false).takeIf { ai }, Category(recentId, recentLabel, false))
+                    applyCategoryOrder(virtual + cats, order) to ai
+                }
+            }.collect { (cats, ai) ->
+                _state.update { it.copy(loadingCategories = false, categories = cats) }
+                if (selected.value == null) select(if (ai) FOR_YOU else recentId)
             }
         }
         viewModelScope.launch {
             combine(selected.filterNotNull(), profiles.session.filterNotNull()) { c, s -> c to s }
                 .flatMapLatest { (cat, s) ->
                     _state.update { it.copy(loadingItems = true) }
-                    itemsFlow(s.profileId, cat)
+                    if (cat == FOR_YOU) forYou(s.profileId) else itemsFlow(s.profileId, cat)
                 }
                 .collect { items -> _state.update { it.copy(loadingItems = false, items = items) } }
         }
@@ -129,7 +141,26 @@ abstract class CatalogBrowseViewModel(
         selected.value = categoryId
         _state.update { it.copy(selectedCategoryId = categoryId) }
         val s = session ?: return
-        if (categoryId != recentId) viewModelScope.launch { library.recordCategoryOpen(s.profileId, kind, categoryId) }
+        if (categoryId != recentId && !categoryId.startsWith("__")) viewModelScope.launch { library.recordCategoryOpen(s.profileId, kind, categoryId) }
+    }
+
+    /** Precomputed by the recommendation pass (startup, and after every like, dislike or favourite). */
+    private fun forYou(profileId: Long): Flow<List<PosterItem>> = recommendations.forYou(profileId, kind)
+
+    /** Moves a category one step up (-1) or down (+1) in the rail and saves the order. */
+    fun moveCategory(categoryId: String, delta: Int) {
+        val s = session ?: return
+        val list = _state.value.categories.toMutableList()
+        val from = list.indexOfFirst { it.id == categoryId }
+        val to = from + delta
+        if (from < 0 || to !in list.indices) return
+        list.add(to, list.removeAt(from))
+        _state.update { it.copy(categories = list) }
+        viewModelScope.launch { settings.setCategoryOrder(s.profileId, kind.key, list.map { it.id }) }
+    }
+
+    companion object {
+        const val FOR_YOU = "__foryou__"
     }
 
     fun submitPin(pin: String): Boolean {
@@ -165,6 +196,7 @@ fun CatalogBrowseScreen(
     emptyTitle: String,
     onLike: (PosterItem) -> Unit = {},
     messages: Flow<String>? = null,
+    onMoveCategory: (String, Int) -> Unit = { _, _ -> },
 ) {
     val backdrop = LocalBackdrop.current
     val toast = rememberToastState()
@@ -180,41 +212,31 @@ fun CatalogBrowseScreen(
             .fillMaxSize()
             .padding(start = AwadyDimens.SafeHorizontal, end = AwadyDimens.SafeHorizontal, top = AwadyDimens.ContentTop, bottom = AwadyDimens.SafeVertical),
     ) {
-        GlassSurface(Modifier.width(AwadyDimens.SideRailWidth - 40.dp).fillMaxHeight(), shape = RoundedCornerShape(AwadyDimens.RadiusXL)) {
-            Column(Modifier.fillMaxSize().padding(12.dp)) {
-                Text(title.uppercase(), style = AwadyType.ShelfHeader, color = AwadyColors.TextSecondary, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp))
-                if (state.loadingCategories) {
-                    LoadingView()
-                } else if (state.categories.size <= 1) {
-                    Text("No categories", style = AwadyType.Caption, color = AwadyColors.TextTertiary, modifier = Modifier.padding(12.dp))
-                } else {
-                    LazyColumn(Modifier.fillMaxSize().focusRestorer(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(4.dp)) {
-                        items(state.categories, key = { it.id }) { category ->
-                            val locked = category.isAdult && state.adultLocked
-                            RailItem(
-                                title = category.name,
-                                selected = category.id == state.selectedCategoryId,
-                                locked = locked,
-                                onClick = { onSelectCategory(category.id) },
-                                onFocus = { if (!locked) dwell = category.id },
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        CategoryRail(
+            title = title,
+            loading = state.loadingCategories,
+            categories = state.categories,
+            selectedId = state.selectedCategoryId,
+            adultLocked = state.adultLocked,
+            onSelect = onSelectCategory,
+            onDwell = { dwell = it },
+            onMove = onMoveCategory,
+            modifier = Modifier.width(AwadyDimens.SideRailWidth - 40.dp).fillMaxHeight(),
+        )
         Spacer(Modifier.width(24.dp))
         Column(Modifier.weight(1f).fillMaxHeight()) {
             val heading = state.categories.firstOrNull { it.id == state.selectedCategoryId }?.name ?: title
             Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(start = 8.dp)) {
                 Text(heading, style = AwadyType.Title, color = AwadyColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (!state.loadingItems) {
+                if (!state.loadingItems && state.items.isNotEmpty()) {
                     Spacer(Modifier.width(12.dp))
                     Text("${state.items.size} titles", style = AwadyType.Caption, color = AwadyColors.TextTertiary, modifier = Modifier.padding(bottom = 5.dp))
                 }
             }
             when {
                 state.loadingItems -> LoadingView()
+                state.items.isEmpty() && state.selectedCategoryId == CatalogBrowseViewModel.FOR_YOU ->
+                    LoadingView(message = "Preparing your picks")
                 state.items.isEmpty() -> EmptyView(emptyTitle, "Nothing in this category yet. Pick another one on the left.", icon = Icons.Rounded.Movie)
                 else -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(AwadyDimens.PosterWidth + 8.dp),

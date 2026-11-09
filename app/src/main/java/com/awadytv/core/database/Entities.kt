@@ -176,7 +176,10 @@ data class FavouriteEntity(
 object LikeSource {
     const val EXPLICIT = "explicit"
     const val IMPLICIT = "implicit"
+    /** Legacy: abandoning < 10 % used to count as a dislike. No longer written and ignored when read. */
     const val IMPLICIT_NEGATIVE = "implicit_negative"
+    /** Explicit thumbs-down from the detail page. */
+    const val DISLIKE = "dislike"
 }
 
 @Entity(tableName = "likes", primaryKeys = ["profileId", "kind", "itemId"])

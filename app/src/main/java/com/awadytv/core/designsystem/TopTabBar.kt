@@ -67,6 +67,8 @@ fun TopTabBar(
     requestInitialFocus: Boolean = false,
     /** Where D-pad Down from any tab goes. Full-bleed content that starts under the bar is not "below" it for focus search. */
     contentFocusRequester: FocusRequester? = null,
+    /** OK on a tab; defaults to [onSelect]. */
+    onClick: (Int) -> Unit = onSelect,
 ) {
     val requesters = remember(tabs.size) { List(tabs.size) { FocusRequester() } }
     val bounds = remember { mutableStateMapOf<Int, Pair<Dp, Dp>>() }
@@ -147,7 +149,7 @@ fun TopTabBar(
                             }
                             .focusRequester(requesters[index])
                             .focusProperties { if (contentFocusRequester != null) down = contentFocusRequester }
-                            .clickable(interactionSource = interaction, indication = null) { onSelect(index) }
+                            .clickable(interactionSource = interaction, indication = null) { onClick(index) }
                             .padding(horizontal = 22.dp)
                             .graphicsLayer { alpha = labelAlpha },
                         contentAlignment = Alignment.Center,

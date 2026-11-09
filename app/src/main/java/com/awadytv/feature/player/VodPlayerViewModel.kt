@@ -33,6 +33,9 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
+/** Quick-seek feedback while the controls are hidden: total seconds skipped in this burst and the target. */
+data class SeekFeedback(val seconds: Int, val targetMs: Long)
+
 data class TrackOption(val label: String, val selected: Boolean, val group: Tracks.Group?, val index: Int)
 
 data class VodPlayerState(
@@ -55,6 +58,7 @@ data class VodPlayerState(
     val nextCountdown: Int? = null,
     val settings: AppSettings = AppSettings(),
     val finished: Boolean = false,
+    val seekFeedback: SeekFeedback? = null,
 )
 
 private data class NowPlaying(
@@ -89,6 +93,10 @@ class VodPlayerViewModel @Inject constructor(
     private var controlsJob: Job? = null
     private var countdownJob: Job? = null
     private var nextCardDismissed = false
+    private var seekTarget: Long? = null
+    private var seekJob: Job? = null
+    private var seekFeedbackJob: Job? = null
+    private var resumeOnStart = false
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -182,6 +190,10 @@ class VodPlayerViewModel @Inject constructor(
 
     private fun start(url: String, mediaId: String, positionMs: Long) {
         val exo = _player.value ?: return
+        current?.let { now ->
+            val key = if (now.kind == ContentKind.EPISODE) "episode:${now.itemId}:${now.seriesId ?: -1}" else "movie:${now.itemId}"
+            appScope.launch { settingsRepository.setLastPlayback(key) }
+        }
         exo.setMediaItem(factory.mediaItem(url, mediaId, live = false), positionMs)
         exo.prepare()
         exo.playWhenReady = true
@@ -251,6 +263,33 @@ class VodPlayerViewModel @Inject constructor(
         showControls()
     }
 
+    /**
+     * Left/Right while the controls are hidden: skip 10 s without showing them. Presses in a burst add up
+     * (+10, +20, ...) on screen at once; the player seeks once the burst pauses, so it does not rebuffer per press.
+     */
+    fun quickSeek(deltaMs: Long) {
+        val exo = _player.value ?: return
+        val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: Long.MAX_VALUE
+        val base = seekTarget ?: exo.currentPosition
+        val target = (base + deltaMs).coerceIn(0, duration)
+        seekTarget = target
+        val previous = _state.value.seekFeedback
+        val step = (deltaMs / 1000).toInt()
+        val seconds = if (previous != null && (previous.seconds > 0) == (step > 0)) previous.seconds + step else step
+        _state.update { it.copy(seekFeedback = SeekFeedback(seconds, target), positionMs = target) }
+        seekJob?.cancel()
+        seekJob = viewModelScope.launch {
+            delay(300)
+            exo.seekTo(target)
+        }
+        seekFeedbackJob?.cancel()
+        seekFeedbackJob = viewModelScope.launch {
+            delay(900)
+            seekTarget = null
+            _state.update { it.copy(seekFeedback = null) }
+        }
+    }
+
     fun showControls() {
         _state.update { it.copy(controlsVisible = true) }
         controlsJob?.cancel()
@@ -301,27 +340,54 @@ class VodPlayerViewModel @Inject constructor(
         _state.update { it.copy(audioTracks = options(C.TRACK_TYPE_AUDIO), textTracks = options(C.TRACK_TYPE_TEXT)) }
     }
 
-    /** Persists the position; called every 10s while playing, on pause/stop and on exit. */
+    /** Persists the position; called every 10s while playing, on pause/stop and on exit. Call on the main thread. */
     private suspend fun saveProgress(markFinished: Boolean = false) {
-        val s = session ?: return
-        val now = current ?: return
-        val exo = _player.value ?: return
+        val write = progressWrite(markFinished) ?: return
+        write()
+    }
+
+    /**
+     * Reads the position from the player now (ExoPlayer may only be touched on the main thread) and
+     * returns the database write, which may then run on any thread.
+     */
+    private fun progressWrite(markFinished: Boolean = false): (suspend () -> Unit)? {
+        val s = session ?: return null
+        val now = current ?: return null
+        val exo = _player.value ?: return null
         val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: _state.value.durationMs
         val position = if (markFinished && duration > 0) duration else exo.currentPosition
-        if (position <= 0) return
-        library.saveProgress(s.profileId, now.kind, now.itemId, position, duration, now.seriesId, now.title, now.image, now.containerExt)
-        if (markFinished && duration > 0) {
-            library.recordImplicitSignal(s.profileId, now.kind, if (now.kind == ContentKind.EPISODE) now.seriesId ?: now.itemId else now.itemId, 1f)
+        if (position <= 0) return null
+        return {
+            library.saveProgress(s.profileId, now.kind, now.itemId, position, duration, now.seriesId, now.title, now.image, now.containerExt)
+            if (markFinished && duration > 0) {
+                library.recordImplicitSignal(s.profileId, now.kind, if (now.kind == ContentKind.EPISODE) now.seriesId ?: now.itemId else now.itemId, 1f)
+            }
         }
     }
 
     fun onStop() {
         val exo = _player.value ?: return
+        resumeOnStart = exo.playWhenReady
         exo.pause()
-        appScope.launch { saveProgress() }
+        // Read the position here on the main thread; only the database write goes to the app scope.
+        // (Reading the player inside appScope, a background dispatcher, crashed the app on leaving the player.)
+        val write = progressWrite() ?: return
+        appScope.launch { write() }
+    }
+
+    /** Back in the app after leaving it mid-film: carry on from where it stopped. */
+    fun onStart() {
+        val exo = _player.value ?: return
+        if (resumeOnStart) {
+            resumeOnStart = false
+            exo.playWhenReady = true
+            showControls()
+        }
     }
 
     override fun onCleared() {
+        // The user left the player (Back or finished), so a relaunch should not reopen it.
+        appScope.launch { settingsRepository.setLastPlayback(null) }
         val s = session
         val now = current
         val exo = _player.value

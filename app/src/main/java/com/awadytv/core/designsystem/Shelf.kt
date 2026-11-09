@@ -17,6 +17,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
@@ -26,7 +30,7 @@ import androidx.tv.material3.Text
  * The row restores focus to the last focused card. No enter animation: fading a whole shelf in needs an
  * offscreen alpha layer, which caused the slowest frames while scrolling on TV GPUs.
  */
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun <T> Shelf(
     title: String,
@@ -40,8 +44,19 @@ fun <T> Shelf(
     val performance = LocalPerformance.current
     val visible = if (capItems) items.take(performance.shelfItemCap) else items
     var rowFocused by remember { mutableStateOf(false) }
+    // Entering a row brings the whole shelf (header, cards and their titles) on screen; moving along the
+    // row then leaves the page still instead of nudging it per card.
+    val shelfInView = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    var shelfHasFocus by remember { mutableStateOf(false) }
     Column(
-        modifier.fillMaxWidth(),
+        modifier
+            .fillMaxWidth()
+            .bringIntoViewRequester(shelfInView)
+            .onFocusChanged { state ->
+                if (state.hasFocus && !shelfHasFocus) scope.launch { shelfInView.bringIntoView() }
+                shelfHasFocus = state.hasFocus
+            },
     ) {
         Text(
             title.uppercase(),

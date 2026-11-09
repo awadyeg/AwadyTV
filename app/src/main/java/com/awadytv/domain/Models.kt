@@ -117,3 +117,11 @@ object AdultContent {
     private val pattern = Regex("(?i)(\\bxxx\\b|\\badults?\\b|18\\s*\\+|\\+\\s*18|\\bporn|\\berotic|\\bfor adults\\b)")
     fun isAdult(categoryName: String?): Boolean = categoryName != null && pattern.containsMatchIn(categoryName)
 }
+
+/** Applies a saved user order: ids in [order] first in that order, the rest after in provider order. */
+fun applyCategoryOrder(categories: List<Category>, order: List<String>): List<Category> {
+    if (order.isEmpty()) return categories
+    val rank = order.withIndex().associate { it.value to it.index }
+    val (known, unknown) = categories.partition { it.id in rank }
+    return known.sortedBy { rank.getValue(it.id) } + unknown
+}

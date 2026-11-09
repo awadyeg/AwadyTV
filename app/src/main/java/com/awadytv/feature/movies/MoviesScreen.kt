@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.awadytv.core.datastore.SettingsRepository
 import com.awadytv.core.security.ParentalGate
+import com.awadytv.data.recommendations.RecommendationRepository
 import com.awadytv.data.repository.LibraryRepository
 import com.awadytv.data.repository.MoviesRepository
 import com.awadytv.data.repository.ProfileRepository
@@ -25,8 +27,10 @@ class MoviesViewModel @Inject constructor(
     profiles: ProfileRepository,
     library: LibraryRepository,
     parental: ParentalGate,
+    settings: SettingsRepository,
+    recommendations: RecommendationRepository,
     private val movies: MoviesRepository,
-) : CatalogBrowseViewModel(profiles, library, parental, ContentKind.MOVIE, MoviesRepository.RECENT, "Recently added") {
+) : CatalogBrowseViewModel(profiles, library, parental, settings, recommendations, ContentKind.MOVIE, MoviesRepository.RECENT, "Recently added") {
     init { start() }
 
     override fun categoriesFlow(profileId: Long): Flow<List<Category>> = movies.categories(profileId)
@@ -50,5 +54,6 @@ fun MoviesScreen(navigator: AppNavigator, viewModel: MoviesViewModel = hiltViewM
         emptyTitle = "No movies here",
         onLike = viewModel::toggleLike,
         messages = viewModel.messages,
+        onMoveCategory = viewModel::moveCategory,
     )
 }

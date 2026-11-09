@@ -6,6 +6,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Subtitles
@@ -47,6 +50,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.math.abs
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,15 +102,22 @@ fun VodPlayerScreen(navigator: AppNavigator, viewModel: VodPlayerViewModel = hil
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) viewModel.onStop() }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> viewModel.onStop()
+                Lifecycle.Event.ON_START -> viewModel.onStart()
+                else -> Unit
+            }
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Back hides what is on top of the video first (next-episode card, controls), then leaves the player.
     BackHandler(enabled = !state.tracksVisible) {
         when {
             state.showNextCard -> viewModel.dismissNextCard()
-            state.controlsVisible && state.isPlaying -> viewModel.hideControls()
+            state.controlsVisible && state.error == null -> viewModel.hideControls()
             else -> navigator.back()
         }
     }
@@ -134,8 +148,8 @@ fun VodPlayerScreen(navigator: AppNavigator, viewModel: VodPlayerViewModel = hil
                     else -> if (!state.controlsVisible) {
                         when (event.key) {
                             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { viewModel.togglePlay(); true }
-                            Key.DirectionLeft -> { viewModel.seekBy(-10_000); true }
-                            Key.DirectionRight -> { viewModel.seekBy(10_000); true }
+                            Key.DirectionLeft -> { viewModel.quickSeek(-10_000); true }
+                            Key.DirectionRight -> { viewModel.quickSeek(10_000); true }
                             Key.DirectionUp, Key.DirectionDown, Key.Menu, Key.Info -> { viewModel.showControls(); true }
                             else -> false
                         }
@@ -156,14 +170,34 @@ fun VodPlayerScreen(navigator: AppNavigator, viewModel: VodPlayerViewModel = hil
             GlassSpinner(Modifier.align(Alignment.Center), size = 52.dp)
         }
 
+        // Title slides away upwards and the transport panel downwards, each toward its own edge.
+        val controlsShown = state.controlsVisible && !state.tracksVisible
         AnimatedVisibility(
-            visible = state.controlsVisible && !state.tracksVisible,
-            enter = fadeIn() + slideInVertically { it / 5 },
-            exit = fadeOut() + slideOutVertically { it / 5 },
+            visible = controlsShown,
+            enter = fadeIn(),
+            exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99000000), 0.25f to Color.Transparent, 0.6f to Color.Transparent, 1f to Color(0xCC000000))))
+        }
+        AnimatedVisibility(
+            visible = controlsShown,
+            enter = fadeIn() + slideInVertically { -it },
+            exit = fadeOut() + slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopStart),
+        ) {
+            TitleBlock(state)
+        }
+        AnimatedVisibility(
+            visible = controlsShown,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             Controls(state, viewModel, navigator, playFocus)
         }
+
+        SeekIndicator(state.seekFeedback, state.durationMs, Modifier.fillMaxSize())
 
         AnimatedVisibility(
             visible = state.showNextCard && state.nextEpisode != null,
@@ -196,17 +230,58 @@ fun VodPlayerScreen(navigator: AppNavigator, viewModel: VodPlayerViewModel = hil
 }
 
 @Composable
-private fun Controls(state: VodPlayerState, viewModel: VodPlayerViewModel, navigator: AppNavigator, playFocus: FocusRequester) {
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(0f to Color(0x99000000), 0.25f to Color.Transparent, 0.6f to Color.Transparent, 1f to Color(0xCC000000))),
-        )
-        Column(Modifier.align(Alignment.TopStart).padding(horizontal = AwadyDimens.SafeHorizontal, vertical = AwadyDimens.SafeVertical)) {
-            Text(state.title, style = AwadyType.Title, color = AwadyColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            state.subtitle?.let { Text(it, style = AwadyType.Body, color = AwadyColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+private fun TitleBlock(state: VodPlayerState) {
+    Column(Modifier.padding(horizontal = AwadyDimens.SafeHorizontal, vertical = AwadyDimens.SafeVertical)) {
+        Text(state.title, style = AwadyType.Title, color = AwadyColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        state.subtitle?.let { Text(it, style = AwadyType.Body, color = AwadyColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }
+}
+
+/** Netflix-style skip feedback: a ring with the skipped seconds on the side that was pressed, plus the new time. */
+@Composable
+private fun SeekIndicator(feedback: SeekFeedback?, durationMs: Long, modifier: Modifier = Modifier) {
+    var last by remember { mutableStateOf(feedback) }
+    if (feedback != null) last = feedback
+    val shown = last
+    Box(modifier) {
+        AnimatedVisibility(
+            visible = feedback != null,
+            enter = fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.85f),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier.align(if ((shown?.seconds ?: 0) < 0) Alignment.CenterStart else Alignment.CenterEnd).padding(horizontal = 160.dp),
+        ) {
+            if (shown != null) {
+                val forward = shown.seconds > 0
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        Modifier.size(112.dp).clip(CircleShape).background(Color(0x99000000)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // Replay is a counter-clockwise arrow; mirrored it reads as "forward".
+                        Icon(
+                            Icons.Rounded.Replay,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(96.dp).graphicsLayer { if (forward) scaleX = -1f },
+                        )
+                        Text(abs(shown.seconds).toString(), style = AwadyType.Caption, color = Color.White, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    Text(
+                        (if (forward) "+" else "-") + "${abs(shown.seconds)}s   " + TimeFormat.playback(shown.targetMs) +
+                            (if (durationMs > 0) " / " + TimeFormat.playback(durationMs) else ""),
+                        style = AwadyType.Label,
+                        color = Color.White,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0x99000000)).padding(horizontal = 14.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun Controls(state: VodPlayerState, viewModel: VodPlayerViewModel, navigator: AppNavigator, playFocus: FocusRequester) {
+    Box(Modifier.fillMaxWidth()) {
         GlassSurface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)

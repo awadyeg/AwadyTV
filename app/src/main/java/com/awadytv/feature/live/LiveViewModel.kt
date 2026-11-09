@@ -2,6 +2,7 @@ package com.awadytv.feature.live
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.awadytv.core.datastore.SettingsRepository
 import com.awadytv.core.security.ParentalGate
 import com.awadytv.data.repository.EpgRepository
 import com.awadytv.data.repository.LibraryRepository
@@ -12,6 +13,7 @@ import com.awadytv.domain.Channel
 import com.awadytv.domain.ContentKind
 import com.awadytv.domain.NowNext
 import com.awadytv.domain.Session
+import com.awadytv.domain.applyCategoryOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -47,6 +49,7 @@ class LiveViewModel @Inject constructor(
     private val epgRepo: EpgRepository,
     private val library: LibraryRepository,
     private val parental: ParentalGate,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(LiveUiState(adultLocked = parental.locked()))
     val state: StateFlow<LiveUiState> = _state
@@ -58,10 +61,10 @@ class LiveViewModel @Inject constructor(
         viewModelScope.launch {
             profiles.session.filterNotNull().flatMapLatest { s ->
                 session = s
-                live.categories(s.profileId)
-            }.collect { cats ->
+                combine(live.categories(s.profileId), settings.categoryOrder(s.profileId, ContentKind.LIVE.key)) { cats, order -> cats to order }
+            }.collect { (cats, order) ->
                 val withVirtual = listOf(Category(LiveRepository.FAVOURITES, "Favourites", false), Category(LiveRepository.ALL, "All channels", false)) + cats
-                _state.update { it.copy(loadingCategories = false, categories = withVirtual) }
+                _state.update { it.copy(loadingCategories = false, categories = applyCategoryOrder(withVirtual, order)) }
                 if (selected.value == null) {
                     val favCount = session?.let { live.favouriteChannels(it.profileId).size } ?: 0
                     select(if (favCount > 0) LiveRepository.FAVOURITES else cats.firstOrNull { c -> !c.isAdult }?.id ?: LiveRepository.ALL)
@@ -107,6 +110,18 @@ class LiveViewModel @Inject constructor(
         _state.update { it.copy(selectedCategoryId = categoryId) }
         val s = session ?: return
         if (!categoryId.startsWith("__")) viewModelScope.launch { library.recordCategoryOpen(s.profileId, ContentKind.LIVE, categoryId) }
+    }
+
+    /** Moves a category one step up (-1) or down (+1) in the rail and saves the order. */
+    fun moveCategory(categoryId: String, delta: Int) {
+        val s = session ?: return
+        val list = _state.value.categories.toMutableList()
+        val from = list.indexOfFirst { it.id == categoryId }
+        val to = from + delta
+        if (from < 0 || to !in list.indices) return
+        list.add(to, list.removeAt(from))
+        _state.update { it.copy(categories = list) }
+        viewModelScope.launch { settings.setCategoryOrder(s.profileId, ContentKind.LIVE.key, list.map { it.id }) }
     }
 
     fun submitPin(pin: String): Boolean {

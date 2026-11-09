@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.awadytv.core.datastore.SettingsRepository
 import com.awadytv.core.security.ParentalGate
+import com.awadytv.data.recommendations.RecommendationRepository
 import com.awadytv.data.repository.LibraryRepository
 import com.awadytv.data.repository.ProfileRepository
 import com.awadytv.data.repository.SeriesRepository
@@ -25,8 +27,10 @@ class SeriesBrowseViewModel @Inject constructor(
     profiles: ProfileRepository,
     library: LibraryRepository,
     parental: ParentalGate,
+    settings: SettingsRepository,
+    recommendations: RecommendationRepository,
     private val series: SeriesRepository,
-) : CatalogBrowseViewModel(profiles, library, parental, ContentKind.SERIES, SeriesRepository.RECENT, "Recently updated") {
+) : CatalogBrowseViewModel(profiles, library, parental, settings, recommendations, ContentKind.SERIES, SeriesRepository.RECENT, "Recently updated") {
     init { start() }
 
     override fun categoriesFlow(profileId: Long): Flow<List<Category>> = series.categories(profileId)
@@ -50,5 +54,6 @@ fun SeriesScreen(navigator: AppNavigator, viewModel: SeriesBrowseViewModel = hil
         emptyTitle = "No series here",
         onLike = viewModel::toggleLike,
         messages = viewModel.messages,
+        onMoveCategory = viewModel::moveCategory,
     )
 }

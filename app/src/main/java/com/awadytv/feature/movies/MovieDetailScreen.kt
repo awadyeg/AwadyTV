@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Theaters
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Movie
@@ -69,6 +72,7 @@ data class MovieDetailState(
     val movie: Movie? = null,
     val notFound: Boolean = false,
     val liked: Boolean = false,
+    val disliked: Boolean = false,
     val favourite: Boolean = false,
     val progress: WatchProgress? = null,
     val related: List<PosterItem> = emptyList(),
@@ -98,6 +102,7 @@ class MovieDetailViewModel @Inject constructor(
                 }
             }
             launch { library.isLiked(s.profileId, ContentKind.MOVIE, streamId).collect { v -> _state.update { it.copy(liked = v) } } }
+            launch { library.isDisliked(s.profileId, ContentKind.MOVIE, streamId).collect { v -> _state.update { it.copy(disliked = v) } } }
             launch { library.isFavourite(s.profileId, ContentKind.MOVIE, streamId).collect { v -> _state.update { it.copy(favourite = v) } } }
             launch { library.observeProgress(s.profileId, ContentKind.MOVIE, streamId).collect { v -> _state.update { it.copy(progress = v) } } }
             launch {
@@ -110,6 +115,11 @@ class MovieDetailViewModel @Inject constructor(
     fun toggleLike() {
         val s = session ?: return
         viewModelScope.launch { library.setLiked(s.profileId, ContentKind.MOVIE, streamId, !_state.value.liked) }
+    }
+
+    fun toggleDislike() {
+        val s = session ?: return
+        viewModelScope.launch { library.setDisliked(s.profileId, ContentKind.MOVIE, streamId, !_state.value.disliked) }
     }
 
     fun toggleFavourite() {
@@ -166,6 +176,13 @@ fun MovieDetailScreen(navigator: AppNavigator, viewModel: MovieDetailViewModel =
                                 onClick = viewModel::toggleLike,
                             )
                             GlassIconButton(
+                                icon = if (state.disliked) Icons.Rounded.ThumbDown else Icons.Outlined.ThumbDown,
+                                contentDescription = if (state.disliked) "Remove dislike" else "Not for me",
+                                active = state.disliked,
+                                activeTint = AwadyColors.TextPrimary,
+                                onClick = viewModel::toggleDislike,
+                            )
+                            GlassIconButton(
                                 icon = if (state.favourite) Icons.Rounded.Star else Icons.Rounded.StarOutline,
                                 contentDescription = if (state.favourite) "Remove from favourites" else "Add to favourites",
                                 active = state.favourite,
@@ -173,7 +190,7 @@ fun MovieDetailScreen(navigator: AppNavigator, viewModel: MovieDetailViewModel =
                                 onClick = viewModel::toggleFavourite,
                             )
                             movie.trailer?.takeIf { it.isNotBlank() }?.let { trailer ->
-                                GlassButton(text = "Trailer", icon = Icons.Rounded.Movie, onClick = { openTrailer(context, trailer) })
+                                GlassIconButton(Icons.Rounded.Theaters, "Trailer", onClick = { openTrailer(context, trailer) })
                             }
                         },
                     )

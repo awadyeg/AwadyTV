@@ -28,7 +28,7 @@ class LibraryRepository @Inject constructor(
 ) {
     private val _likeChanges = MutableSharedFlow<Long>(extraBufferCapacity = 8)
 
-    /** Emits the profile id whenever a like changes, so recommendations recompute immediately. */
+    /** Emits the profile id whenever a like, dislike or favourite changes, so recommendations recompute immediately. */
     val likeChanges: SharedFlow<Long> = _likeChanges
 
     fun favouriteIds(profileId: Long, kind: ContentKind): Flow<List<Long>> =
@@ -42,12 +42,27 @@ class LibraryRepository @Inject constructor(
         } else {
             favourites.delete(profileId, kind.key, itemId)
         }
+        // Favourite movies and series count as a like for recommendations.
+        if (kind == ContentKind.MOVIE || kind == ContentKind.SERIES) _likeChanges.tryEmit(profileId)
     }
 
     fun isLiked(profileId: Long, kind: ContentKind, itemId: Long): Flow<Boolean> =
         likes.observe(profileId, kind.key, itemId).map { it?.source == LikeSource.EXPLICIT }
 
+    fun isDisliked(profileId: Long, kind: ContentKind, itemId: Long): Flow<Boolean> =
+        likes.observe(profileId, kind.key, itemId).map { it?.source == LikeSource.DISLIKE }
+
     fun observeLikes(profileId: Long): Flow<List<LikeEntity>> = likes.observeAll(profileId)
+
+    /** Thumbs-down. Shares the row with a like, so disliking replaces a like and vice versa. */
+    suspend fun setDisliked(profileId: Long, kind: ContentKind, itemId: Long, disliked: Boolean) {
+        if (disliked) {
+            likes.upsert(LikeEntity(profileId, kind.key, itemId, System.currentTimeMillis(), LikeSource.DISLIKE))
+        } else if (likes.get(profileId, kind.key, itemId)?.source == LikeSource.DISLIKE) {
+            likes.delete(profileId, kind.key, itemId)
+        }
+        _likeChanges.tryEmit(profileId)
+    }
 
     suspend fun setLiked(profileId: Long, kind: ContentKind, itemId: Long, liked: Boolean) {
         if (liked) {
@@ -86,20 +101,17 @@ class LibraryRepository @Inject constructor(
     }
 
     /**
-     * Implicit signals (plan 6.1): finishing >= 90 % counts as a weak like, abandoning < 10 % a weak dislike.
-     * Never overrides an explicit like. For episodes the signal is recorded on the parent series.
+     * Implicit signal: finishing >= 90 % counts as a weak like. Stopping early is not treated as a dislike
+     * (people stop for many reasons); dislikes are only the explicit thumbs-down. Never overrides an
+     * explicit like or dislike. For episodes the signal is recorded on the parent series.
      */
     suspend fun recordImplicitSignal(profileId: Long, kind: ContentKind, itemId: Long, fraction: Float) {
         val targetKind = if (kind == ContentKind.EPISODE) ContentKind.SERIES else kind
         if (targetKind != ContentKind.MOVIE && targetKind != ContentKind.SERIES) return
         val existing = likes.get(profileId, targetKind.key, itemId)
-        if (existing?.source == LikeSource.EXPLICIT) return
-        val source = when {
-            fraction >= 0.9f -> LikeSource.IMPLICIT
-            fraction < 0.1f && existing == null -> LikeSource.IMPLICIT_NEGATIVE
-            else -> return
-        }
-        likes.upsert(LikeEntity(profileId, targetKind.key, itemId, System.currentTimeMillis(), source))
+        if (existing?.source == LikeSource.EXPLICIT || existing?.source == LikeSource.DISLIKE) return
+        if (fraction < 0.9f) return
+        likes.upsert(LikeEntity(profileId, targetKind.key, itemId, System.currentTimeMillis(), LikeSource.IMPLICIT))
         _likeChanges.tryEmit(profileId)
     }
 

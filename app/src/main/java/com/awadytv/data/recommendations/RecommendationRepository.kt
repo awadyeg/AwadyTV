@@ -1,6 +1,7 @@
 package com.awadytv.data.recommendations
 
 import com.awadytv.core.database.CategoryOpenDao
+import com.awadytv.core.database.FavouriteDao
 import com.awadytv.core.database.ItemKind
 import com.awadytv.core.database.LikeDao
 import com.awadytv.core.database.LikeSource
@@ -46,6 +47,7 @@ class RecommendationRepository @Inject constructor(
     private val movies: MoviesRepository,
     private val series: SeriesRepository,
     private val likes: LikeDao,
+    private val favourites: FavouriteDao,
     private val progress: ProgressDao,
     private val categoryOpens: CategoryOpenDao,
     private val dao: RecommendationDao,
@@ -66,7 +68,8 @@ class RecommendationRepository @Inject constructor(
         }
     }
 
-    fun shelves(profileId: Long): Flow<List<RecommendationShelf>> = dao.observe(profileId).map { rows ->
+    fun shelves(profileId: Long): Flow<List<RecommendationShelf>> = dao.observe(profileId).map { all ->
+        val rows = all.filterNot { it.shelf.startsWith(FOR_YOU_PREFIX) }
         if (rows.isEmpty()) return@map emptyList()
         val movieIds = rows.filter { it.itemKind == ItemKind.MOVIE }.map { it.itemId }.distinct()
         val seriesIds = rows.filter { it.itemKind == ItemKind.SERIES }.map { it.itemId }.distinct()
@@ -94,7 +97,7 @@ class RecommendationRepository @Inject constructor(
             if (!settings.current().aiRecommendations) return@withContext
             if (!force) {
                 val last = dao.lastComputedAt(profileId)
-                if (last != null && now - last < TTL_MS) return@withContext
+                if (last != null && now - last < TTL_MS && dao.forYouCount(profileId) > 0) return@withContext
             }
             val index = indexFor(profileId, rebuild = true)
             val input = engineInput(profileId, now)
@@ -122,7 +125,52 @@ class RecommendationRepository @Inject constructor(
                     )
                 }
             }
-            dao.replace(profileId, rows)
+            dao.replace(profileId, rows + forYouRows(profileId, index, input, now))
+        }
+    }
+
+    /**
+     * The "For you" category of Movies and Series: each catalog ranked by the engine, best first. Computed in
+     * this background pass over the same index and stored with the shelves, so the category opens instantly
+     * (ranking a large catalog from scratch on a TV CPU takes tens of seconds).
+     */
+    private fun forYouRows(profileId: Long, index: CatalogIndex, input: EngineInput, now: Long): List<RecommendationEntity> {
+        val ranked = RecommendationEngine(recommendedSize = FOR_YOU_SIZE * 4).recommend(index, input)
+            .shelves.firstOrNull { it.id == RecommendationEngine.SHELF_RECOMMENDED }?.items.orEmpty()
+        return listOf(ContentKind.MOVIE, ContentKind.SERIES).flatMap { kind ->
+            ranked.filter { it.item.kind == kind }.take(FOR_YOU_SIZE).mapIndexed { i, scored ->
+                RecommendationEntity(
+                    profileId = profileId,
+                    shelf = FOR_YOU_PREFIX + kind.key,
+                    shelfTitle = "For you",
+                    itemKind = kind.key,
+                    itemId = scored.item.id,
+                    score = scored.score,
+                    reason = scored.reason,
+                    position = i,
+                    computedAt = now,
+                )
+            }
+        }
+    }
+
+    /** The stored "For you" ranking of one kind; empty until the first background pass has run (it is started here). */
+    fun forYou(profileId: Long, kind: ContentKind): Flow<List<PosterItem>> = dao.observe(profileId).map { all ->
+        val rows = all.filter { it.shelf == FOR_YOU_PREFIX + kind.key }.sortedBy { it.position }
+        if (rows.isEmpty()) {
+            appScope.launch { runCatching { refresh(profileId) } }
+            return@map emptyList()
+        }
+        when (kind) {
+            ContentKind.MOVIE -> {
+                val map = movies.byIds(profileId, rows.map { it.itemId }).associateBy { it.streamId }
+                rows.mapNotNull { r -> map[r.itemId]?.let { PosterItem(ContentKind.MOVIE, it.streamId, it.name, it.icon, it.backdrop, ratingLabel(it.rating), caption = r.reason) } }
+            }
+            ContentKind.SERIES -> {
+                val map = series.byIds(profileId, rows.map { it.itemId }).associateBy { it.seriesId }
+                rows.mapNotNull { r -> map[r.itemId]?.let { PosterItem(ContentKind.SERIES, it.seriesId, it.name, it.cover, it.backdrop, ratingLabel(it.rating), caption = r.reason) } }
+            }
+            else -> emptyList()
         }
     }
 
@@ -142,6 +190,8 @@ class RecommendationRepository @Inject constructor(
         }
     }
 
+    private fun ratingLabel(rating: Double?): String? = rating?.takeIf { it > 0 }?.let { "★ " + String.format(java.util.Locale.US, "%.1f", it) }
+
     /** Re-ranker candidates: the local top-60. */
     private fun widen(index: CatalogIndex, input: EngineInput, top: List<ScoredItem>): List<ScoredItem> {
         val wide = RecommendationEngine(recommendedSize = 60).recommend(index, input).shelves.firstOrNull { it.id == RecommendationEngine.SHELF_RECOMMENDED }?.items
@@ -149,20 +199,31 @@ class RecommendationRepository @Inject constructor(
     }
 
     private suspend fun engineInput(profileId: Long, now: Long): EngineInput {
-        val signals = likes.all(profileId).mapNotNull { like ->
-            val kind = when (like.kind) {
-                ItemKind.MOVIE -> ContentKind.MOVIE
-                ItemKind.SERIES -> ContentKind.SERIES
-                else -> return@mapNotNull null
-            }
+        fun kindOf(key: String) = when (key) {
+            ItemKind.MOVIE -> ContentKind.MOVIE
+            ItemKind.SERIES -> ContentKind.SERIES
+            else -> null
+        }
+        val likeSignals = likes.all(profileId).mapNotNull { like ->
+            val kind = kindOf(like.kind) ?: return@mapNotNull null
             val weight = when (like.source) {
                 LikeSource.EXPLICIT -> 1.0
                 LikeSource.IMPLICIT -> 0.5
-                LikeSource.IMPLICIT_NEGATIVE -> -0.5
-                else -> 0.0
+                LikeSource.DISLIKE -> -1.0
+                else -> return@mapNotNull null // includes legacy implicit_negative: no longer a dislike
             }
-            Signal(kind, like.itemId, weight, like.likedAt, like.source == LikeSource.EXPLICIT)
+            Signal(kind, like.itemId, weight, like.likedAt, like.source == LikeSource.EXPLICIT || like.source == LikeSource.DISLIKE)
         }
+        // A favourite counts as an explicit like, unless the user disliked it or already liked it explicitly.
+        val byKey = likeSignals.associateBy { it.key }
+        val favouriteSignals = favourites.all(profileId).mapNotNull { fav ->
+            val kind = kindOf(fav.kind) ?: return@mapNotNull null
+            val signal = Signal(kind, fav.itemId, 1.0, fav.addedAt, explicit = true)
+            val existing = byKey[signal.key]
+            if (existing != null && (existing.weight < 0 || existing.explicit)) null else signal
+        }
+        val favKeys = favouriteSignals.map { it.key }.toSet()
+        val signals = likeSignals.filter { it.key !in favKeys } + favouriteSignals
         val watched = progress.all(profileId).mapNotNull { p ->
             when (p.kind) {
                 ItemKind.MOVIE -> RecItem.key(ContentKind.MOVIE, p.itemId)
@@ -233,6 +294,8 @@ class RecommendationRepository @Inject constructor(
 
     companion object {
         const val TTL_MS = 6L * 3600 * 1000
+        const val FOR_YOU_PREFIX = "foryou:"
+        private const val FOR_YOU_SIZE = 200
         private const val MAX_ITEMS = 15_000
     }
 }

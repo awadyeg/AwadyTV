@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,9 +105,15 @@ fun RailItem(
     locked: Boolean = false,
     onFocus: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
+    onLongClick: (() -> Unit)? = null,
+    moving: Boolean = false,
 ) {
-    GlassListRow(onClick = onClick, selected = selected, onFocus = onFocus, focusRequester = focusRequester, modifier = modifier.fillMaxWidth()) { focused ->
+    GlassListRow(onClick = onClick, selected = selected || moving, onFocus = onFocus, onLongClick = onLongClick, focusRequester = focusRequester, modifier = modifier.fillMaxWidth()) { focused ->
         val color = if (focused) AwadyColors.TextOnFocus else if (selected) AwadyColors.TextPrimary else AwadyColors.TextSecondary
+        if (moving) {
+            Icon(Icons.Rounded.SwapVert, contentDescription = "Moving", tint = if (focused) AwadyColors.Accent else AwadyColors.AccentSoft, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+        }
         Text(title, style = AwadyType.Label, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         if (locked) Icon(Icons.Rounded.Lock, contentDescription = "Locked", tint = color, modifier = Modifier.size(18.dp))
         if (count != null) {

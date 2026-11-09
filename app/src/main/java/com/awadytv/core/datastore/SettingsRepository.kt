@@ -51,6 +51,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val claude = booleanPreferencesKey("claude_enabled")
         val lowEnd = booleanPreferencesKey("force_low_end")
         val autoplay = booleanPreferencesKey("autoplay_next")
+        val lastPlayback = stringPreferencesKey("last_playback")
     }
 
     val settings: Flow<AppSettings> = context.settingsStore.data.map { p ->
@@ -84,4 +85,26 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setClaudeEnabled(v: Boolean) = context.settingsStore.edit { it[Keys.claude] = v }
     suspend fun setForceLowEnd(v: Boolean) = context.settingsStore.edit { it[Keys.lowEnd] = v }
     suspend fun setAutoplayNext(v: Boolean) = context.settingsStore.edit { it[Keys.autoplay] = v }
+
+    /** User order of the category rail ("live", "movie", "series"); ids not listed keep provider order after these. */
+    fun categoryOrder(profileId: Long, kind: String): Flow<List<String>> =
+        context.settingsStore.data.map { p -> p[orderKey(profileId, kind)]?.split(ORDER_SEPARATOR)?.filter { it.isNotEmpty() }.orEmpty() }
+            .distinctUntilChanged()
+
+    suspend fun setCategoryOrder(profileId: Long, kind: String, ids: List<String>) =
+        context.settingsStore.edit { it[orderKey(profileId, kind)] = ids.joinToString(ORDER_SEPARATOR) }
+
+    private fun orderKey(profileId: Long, kind: String) = stringPreferencesKey("category_order_${profileId}_$kind")
+
+    /**
+     * The VOD title on screen ("movie:<id>" or "episode:<id>:<seriesId>"), kept while the player is open and
+     * cleared when the user leaves it, so a relaunch after the app was closed mid-film resumes playback.
+     */
+    suspend fun lastPlayback(): String? = context.settingsStore.data.first()[Keys.lastPlayback]
+    suspend fun setLastPlayback(v: String?) = context.settingsStore.edit { if (v == null) it.remove(Keys.lastPlayback) else it[Keys.lastPlayback] = v }
+
+    private companion object {
+        /** Separator that never appears in provider category ids. */
+        const val ORDER_SEPARATOR = "|/|"
+    }
 }

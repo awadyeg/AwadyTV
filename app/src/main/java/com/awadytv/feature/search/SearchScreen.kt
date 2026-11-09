@@ -24,7 +24,11 @@ import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -119,8 +123,22 @@ class SearchViewModel @Inject constructor(
 }
 
 @Composable
-fun SearchScreen(navigator: AppNavigator, viewModel: SearchViewModel = hiltViewModel()) {
+fun SearchScreen(
+    navigator: AppNavigator,
+    openKeyboard: Boolean = false,
+    onKeyboardOpened: () -> Unit = {},
+    viewModel: SearchViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(openKeyboard) {
+        if (!openKeyboard) return@LaunchedEffect
+        delay(150) // let the tab switch lay the field out
+        runCatching { fieldFocus.requestFocus() }
+        keyboard?.show()
+        onKeyboardOpened()
+    }
     val context = LocalContext.current
     val backdrop = LocalBackdrop.current
     val voiceIntent = remember {
@@ -149,6 +167,7 @@ fun SearchScreen(navigator: AppNavigator, viewModel: SearchViewModel = hiltViewM
                 leadingIcon = Icons.Rounded.Search,
                 imeAction = ImeAction.Search,
                 onImeAction = {},
+                focusRequester = fieldFocus,
                 modifier = Modifier.widthIn(max = 640.dp).weight(1f, fill = false),
             )
             if (voiceAvailable) {

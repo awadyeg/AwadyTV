@@ -31,12 +31,13 @@ import com.awadytv.core.designsystem.AwadyMotion
 import com.awadytv.core.designsystem.TabItem
 import com.awadytv.core.designsystem.TopTabBar
 
+/** Tab bar order, left to right. */
 enum class MainTab(val item: TabItem) {
-    Home(TabItem("Home")),
-    Live(TabItem("Live TV")),
-    Movies(TabItem("Movies")),
-    Series(TabItem("Series")),
     Search(TabItem("", Icons.Rounded.Search)),
+    Home(TabItem("Home")),
+    Series(TabItem("Series")),
+    Movies(TabItem("Movies")),
+    Live(TabItem("Live TV")),
     Settings(TabItem("", Icons.Rounded.Settings)),
 }
 
@@ -46,10 +47,12 @@ enum class MainTab(val item: TabItem) {
  */
 @Composable
 fun MainShell(
-    tabContent: @Composable (MainTab) -> Unit,
+    tabContent: @Composable (tab: MainTab, openSearchKeyboard: Boolean, onSearchKeyboardOpened: () -> Unit) -> Unit,
     onExit: (() -> Unit)? = null,
 ) {
-    var selected by rememberSaveable { mutableIntStateOf(0) }
+    var selected by rememberSaveable { mutableIntStateOf(MainTab.Home.ordinal) }
+    // OK on the Search tab (not just passing over it) opens the on-screen keyboard right away.
+    var openSearchKeyboard by remember { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
     val contentRequester = remember { FocusRequester() }
     val tab = MainTab.entries[selected]
@@ -72,12 +75,16 @@ fun MainShell(
                 .focusGroup(),
             label = "tabContent",
         ) { current ->
-            tabContent(current)
+            tabContent(current, openSearchKeyboard && current == MainTab.Search) { openSearchKeyboard = false }
         }
         TopTabBar(
             tabs = MainTab.entries.map { it.item },
             selectedIndex = selected,
             onSelect = { selected = it },
+            onClick = { index ->
+                selected = index
+                if (index == MainTab.Search.ordinal) openSearchKeyboard = true
+            },
             collapsed = contentFocused,
             requestInitialFocus = true,
             contentFocusRequester = contentRequester,
