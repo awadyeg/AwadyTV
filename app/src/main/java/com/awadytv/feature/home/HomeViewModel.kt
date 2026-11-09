@@ -3,6 +3,8 @@ package com.awadytv.feature.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.awadytv.core.datastore.SettingsRepository
+import com.awadytv.core.security.AdultFilter
+import com.awadytv.core.security.ParentalGate
 import com.awadytv.core.util.TimeFormat
 import com.awadytv.data.recommendations.RecommendationEngine
 import com.awadytv.data.recommendations.RecommendationRepository
@@ -69,6 +71,8 @@ class HomeViewModel @Inject constructor(
     private val series: SeriesRepository,
     private val live: LiveRepository,
     private val settings: SettingsRepository,
+    private val parental: ParentalGate,
+    private val adult: AdultFilter,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state
@@ -77,15 +81,27 @@ class HomeViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            profiles.session.filterNotNull().flatMapLatest { s ->
+            combine(profiles.session.filterNotNull(), parental.unlocked) { s, _ -> s }.flatMapLatest { s ->
                 launch { runCatching { recommendations.refresh(s.profileId) } }
+                // Adult categories stay off Home while the parental lock is on.
+                val blockedMovies = adult.blockedMovies(s.profileId)
+                val blockedSeries = adult.blockedSeries(s.profileId)
+                val blockedLive = adult.blockedLive(s.profileId)
                 val base = combine(
                     library.continueWatching(s.profileId),
                     recommendations.shelves(s.profileId),
                     movies.recent(s.profileId, 40),
                     series.recent(s.profileId, 40),
                     live.favouriteChannelsFlow(s.profileId),
-                ) { cw, recs, recentMovies, recentSeries, channels -> Inputs(cw, recs, recentMovies.map { it.toPoster() }, recentSeries.map { it.toPoster() }, channels) }
+                ) { cw, recs, recentMovies, recentSeries, channels ->
+                    Inputs(
+                        cw,
+                        recs,
+                        recentMovies.filter { it.categoryId !in blockedMovies }.map { it.toPoster() },
+                        recentSeries.filter { it.categoryId !in blockedSeries }.map { it.toPoster() },
+                        channels.filter { it.categoryId !in blockedLive },
+                    )
+                }
                 combine(base, settings.settings) { inputs, st -> inputs to st.aiRecommendations }
             }.collect { (inputs, ai) -> publish(inputs, ai) }
         }

@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -24,7 +27,9 @@ import com.awadytv.core.designsystem.PerformanceProfile
 @Composable
 fun AwadyRoot() {
     val context = LocalContext.current
-    val performance = remember { PerformanceProfile.detect(context) }
+    val rootViewModel: RootViewModel = hiltViewModel()
+    val settings by rootViewModel.settings.collectAsStateWithLifecycle()
+    val performance = remember(settings.forceLowEnd) { PerformanceProfile.detect(context, settings.forceLowEnd) }
     val glass = remember { GlassBackdrop() }
     val backdrop = remember { BackdropController() }
     val tracker = remember { FocusDirectionTracker() }

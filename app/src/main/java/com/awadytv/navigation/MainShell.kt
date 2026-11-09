@@ -43,7 +43,7 @@ enum class MainTab(val item: TabItem) {
  */
 @Composable
 fun MainShell(
-    tabContent: @Composable (MainTab) -> Unit = { PlaceholderTab(it) },
+    tabContent: @Composable (MainTab) -> Unit,
     onExit: (() -> Unit)? = null,
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }

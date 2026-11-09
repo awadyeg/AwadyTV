@@ -65,6 +65,7 @@ class NavControllerNavigator(private val nav: NavHostController) : AppNavigator 
     override fun addProfile() = nav.navigate(LoginRoute(addProfile = true))
     override fun resync(profileId: Long) = resetTo(SyncRoute(profileId))
     override fun signedOut() = resetTo(LoginRoute())
+    override fun restartHome() = resetTo(MainRoute)
     override fun back() {
         nav.popBackStack()
     }

@@ -1,6 +1,9 @@
 package com.awadytv.feature.login
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.navigation.toRoute
+import com.awadytv.navigation.LoginRoute
 import androidx.lifecycle.viewModelScope
 import com.awadytv.core.util.AppError
 import com.awadytv.core.util.AppResult
@@ -32,7 +35,11 @@ sealed interface LoginEvent {
 }
 
 @HiltViewModel
-class LoginViewModel @Inject constructor(private val repository: ProfileRepository) : ViewModel() {
+class LoginViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val repository: ProfileRepository,
+) : ViewModel() {
+    private val addingProfile = savedStateHandle.toRoute<LoginRoute>().addProfile
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state
     private val _events = Channel<LoginEvent>(Channel.BUFFERED)
@@ -40,8 +47,8 @@ class LoginViewModel @Inject constructor(private val repository: ProfileReposito
 
     init {
         viewModelScope.launch {
-            // Remember the last profile: prefill its server and username.
-            val last = repository.profiles.first().firstOrNull()
+            // Remember the last profile: prefill its server and username (not when adding another account).
+            val last = if (addingProfile) null else repository.profiles.first().firstOrNull()
             if (last != null) _state.update { it.copy(server = last.serverUrl, username = last.username) }
         }
         viewModelScope.launch {

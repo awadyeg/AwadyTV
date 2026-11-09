@@ -29,5 +29,6 @@ interface AppNavigator {
     fun addProfile()
     fun resync(profileId: Long)
     fun signedOut()
+    fun restartHome()
     fun back()
 }

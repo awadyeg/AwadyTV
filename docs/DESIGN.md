@@ -85,6 +85,8 @@ low-end path.
 | `TopTabBar` | `TopTabBar.kt` | Floating capsule, sliding pill, dwell-to-select, collapses to a line |
 | `GlassSideSheet`, `GlassDialog`, `SafeArea` | `Sheets.kt` | Channel list / track picker sheets, PIN dialog |
 | `LoadingView`, `EmptyView`, `ErrorView`, `GlassSpinner` | `States.kt` | Every list/grid uses these; `ErrorView` grabs focus on its retry button |
+| `GlassListRow`, `RailItem`, `PinDialog` | `ListRow.kt` | Rail/list rows invert to white glass on focus; D-pad number pad for the parental PIN |
+| `GlassToastHost` | `Toast.kt` | Non-focusable glass capsule for confirmations ("Liked …") |
 
 ## Focus rules
 - Every focusable element has a visible focus state (lift + white border, or white glass inversion).

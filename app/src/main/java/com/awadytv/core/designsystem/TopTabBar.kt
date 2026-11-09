@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
@@ -104,7 +105,7 @@ fun TopTabBar(
             if (target != null) {
                 Box(
                     Modifier
-                        .offset(x = pillX)
+                        .offset { IntOffset(pillX.roundToPx(), 0) }
                         .padding(vertical = 6.dp)
                         .width(pillW)
                         .height(AwadyDimens.TabBarHeight - 12.dp)

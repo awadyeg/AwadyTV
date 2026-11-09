@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import com.awadytv.feature.home.HomeScreen
 import com.awadytv.feature.live.LiveScreen
 import com.awadytv.feature.movies.MoviesScreen
+import com.awadytv.feature.search.SearchScreen
+import com.awadytv.feature.settings.SettingsScreen
 import com.awadytv.feature.series.SeriesScreen
 
 @Composable
@@ -13,6 +15,7 @@ fun TabContent(tab: MainTab, navigator: AppNavigator) {
         MainTab.Live -> LiveScreen(navigator)
         MainTab.Movies -> MoviesScreen(navigator)
         MainTab.Series -> SeriesScreen(navigator)
-        else -> PlaceholderTab(tab)
+        MainTab.Search -> SearchScreen(navigator)
+        MainTab.Settings -> SettingsScreen(navigator)
     }
 }
