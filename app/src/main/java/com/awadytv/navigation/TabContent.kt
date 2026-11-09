@@ -1,10 +1,12 @@
 package com.awadytv.navigation
 
 import androidx.compose.runtime.Composable
+import com.awadytv.feature.live.LiveScreen
 
 @Composable
 fun TabContent(tab: MainTab, navigator: AppNavigator) {
     when (tab) {
+        MainTab.Live -> LiveScreen(navigator)
         else -> PlaceholderTab(tab)
     }
 }
