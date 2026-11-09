@@ -48,5 +48,7 @@ fun MoviesScreen(navigator: AppNavigator, viewModel: MoviesViewModel = hiltViewM
         onSubmitPin = viewModel::submitPin,
         onDismissPin = viewModel::dismissPin,
         emptyTitle = "No movies here",
+        onLike = viewModel::toggleLike,
+        messages = viewModel.messages,
     )
 }

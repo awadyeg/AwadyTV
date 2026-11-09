@@ -48,5 +48,7 @@ fun SeriesScreen(navigator: AppNavigator, viewModel: SeriesBrowseViewModel = hil
         onSubmitPin = viewModel::submitPin,
         onDismissPin = viewModel::dismissPin,
         emptyTitle = "No series here",
+        onLike = viewModel::toggleLike,
+        messages = viewModel.messages,
     )
 }

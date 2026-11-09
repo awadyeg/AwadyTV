@@ -1,6 +1,7 @@
 package com.awadytv.feature.common
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,8 @@ import com.awadytv.core.designsystem.AwadyDimens
 import com.awadytv.core.designsystem.AwadyType
 import com.awadytv.core.designsystem.EmptyView
 import com.awadytv.core.designsystem.GlassSurface
+import com.awadytv.core.designsystem.GlassToastHost
+import com.awadytv.core.designsystem.rememberToastState
 import com.awadytv.core.designsystem.LoadingView
 import com.awadytv.core.designsystem.LocalBackdrop
 import com.awadytv.core.designsystem.PinDialog
@@ -56,7 +59,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -82,6 +87,8 @@ abstract class CatalogBrowseViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(BrowseUiState(adultLocked = parental.locked()))
     val state: StateFlow<BrowseUiState> = _state
+    private val _messages = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.BUFFERED)
+    val messages = _messages.receiveAsFlow()
     private val selected = MutableStateFlow<String?>(null)
     private var session: Session? = null
 
@@ -134,6 +141,16 @@ abstract class CatalogBrowseViewModel(
     }
 
     fun dismissPin() = _state.update { it.copy(pinPromptFor = null) }
+
+    /** Hold OK on a poster: like/unlike it (feeds recommendations). */
+    fun toggleLike(item: PosterItem) {
+        val s = session ?: return
+        viewModelScope.launch {
+            val liked = library.isLiked(s.profileId, item.kind, item.id).first()
+            library.setLiked(s.profileId, item.kind, item.id, !liked)
+            _messages.send(if (liked) "Removed “${item.title}” from likes" else "♥ Liked “${item.title}”")
+        }
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -146,8 +163,12 @@ fun CatalogBrowseScreen(
     onSubmitPin: (String) -> Boolean,
     onDismissPin: () -> Unit,
     emptyTitle: String,
+    onLike: (PosterItem) -> Unit = {},
+    messages: Flow<String>? = null,
 ) {
     val backdrop = LocalBackdrop.current
+    val toast = rememberToastState()
+    LaunchedEffect(messages) { messages?.collect { toast.show(it) } }
     var dwell by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(dwell) {
         val id = dwell ?: return@LaunchedEffect
@@ -209,12 +230,16 @@ fun CatalogBrowseScreen(
                             badge = item.badge,
                             progress = item.progress,
                             onClick = { onOpen(item) },
+                            onLongClick = { onLike(item) },
                             onFocus = { backdrop.show(item.backdrop ?: item.image) },
                         )
                     }
                 }
             }
         }
+    }
+    Box(Modifier.fillMaxSize()) {
+        GlassToastHost(toast, Modifier.align(Alignment.BottomCenter).padding(bottom = AwadyDimens.SafeVertical + 8.dp))
     }
     state.pinPromptFor?.let { category ->
         PinDialog(title = "Unlock ${category.name}", onDismiss = onDismissPin, onSubmit = onSubmitPin)

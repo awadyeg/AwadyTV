@@ -73,6 +73,7 @@ fun MainShell(
             selectedIndex = selected,
             onSelect = { selected = it },
             collapsed = contentFocused,
+            requestInitialFocus = true,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = AwadyDimens.SafeVertical),

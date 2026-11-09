@@ -63,6 +63,7 @@ fun TopTabBar(
     collapsed: Boolean,
     modifier: Modifier = Modifier,
     onFocusChanged: (Boolean) -> Unit = {},
+    requestInitialFocus: Boolean = false,
 ) {
     val requesters = remember(tabs.size) { List(tabs.size) { FocusRequester() } }
     val bounds = remember { mutableStateMapOf<Int, Pair<Dp, Dp>>() }
@@ -79,6 +80,11 @@ fun TopTabBar(
     val height by animateDpAsState(if (isCollapsed) AwadyDimens.TabBarCollapsedHeight else AwadyDimens.TabBarHeight, tween(250), label = "barHeight")
     val labelAlpha by animateFloatAsState(if (isCollapsed) 0f else 1f, tween(180), label = "labelAlpha")
     val pillColor by animateColorAsState(if (focusedIndex >= 0) AwadyColors.GlassFocused else Color(0x40FFFFFF), tween(150), label = "pillColor")
+
+    // Deterministic first focus: the selected tab, like tvOS.
+    LaunchedEffect(Unit) {
+        if (requestInitialFocus) runCatching { requesters.getOrNull(selectedIndex)?.requestFocus() }
+    }
 
     // Dwell-to-select: moving quickly across tabs does not load every screen on the way.
     LaunchedEffect(focusedIndex) {
