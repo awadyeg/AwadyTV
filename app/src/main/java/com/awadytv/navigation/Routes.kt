@@ -17,6 +17,8 @@ import kotlinx.serialization.Serializable
 /** VOD player: [kind] is "movie" or "episode"; [seriesId] is set for episodes. */
 @Serializable data class VodPlayerRoute(val kind: String, val itemId: Long, val seriesId: Long = -1L, val fromStart: Boolean = false)
 
+@Serializable object TasteTrainerRoute
+
 @Serializable data class LivePlayerRoute(val streamId: Long, val categoryId: String? = null)
 
 /** Navigation actions available to every screen. */
@@ -26,6 +28,7 @@ interface AppNavigator {
     fun playMovie(streamId: Long, fromStart: Boolean = false)
     fun playEpisode(seriesId: Long, episodeId: Long, fromStart: Boolean = false)
     fun playLive(streamId: Long, categoryId: String?)
+    fun openTasteTrainer()
     fun addProfile()
     fun resync(profileId: Long)
     fun signedOut()

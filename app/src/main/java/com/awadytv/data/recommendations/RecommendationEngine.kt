@@ -65,9 +65,15 @@ class CatalogIndex internal constructor(
  * Local, content-based recommender (plan 6.2). No network, deterministic, unit-tested.
  *
  * Features per item: genre (weight 3), director (2), top-5 cast (1.5), decade (1), plot keywords by
- * TF-IDF over the catalog (1). The taste profile is the recency-decayed (`0.5^(days/60)`) weighted sum
- * of liked items' vectors. Candidates are scored by cosine similarity + `0.1 x rating/10` + a novelty
- * bonus for items added in the last 14 days - a penalty for categories the user never opens.
+ * TF-IDF over the catalog (1), plus what IPTV catalogs have for *every* title even without metadata
+ * (Xtream movie lists carry no genre, cast or plot until a title's page is opened): the name prefix tags
+ * ("AR:", "4K-AR:", "AR-SUBS:" = language / subtitles / quality, 2.5), the category (1.5) and the words of
+ * its name ("Turkish dubbed", "Indian", 1.5, shared across movies and series), and title words (1, catches
+ * sequels and franchises). Every feature is scaled by a soft IDF so one shared by thousands of titles
+ * (e.g. "AR") counts less than a rare one (same director, same franchise).
+ * The taste profile is the recency-decayed (`0.5^(days/60)`) weighted sum of liked items' vectors.
+ * Candidates are scored by cosine similarity + `0.1 x rating/10` + a novelty bonus for items added in the
+ * last 14 days - a penalty for categories the user never opens.
  */
 class RecommendationEngine(
     private val recommendedSize: Int = 20,
@@ -82,7 +88,7 @@ class RecommendationEngine(
         val n = unique.size.coerceAtLeast(1)
         val idf = df.mapValues { (_, d) -> ln((n + 1.0) / (d + 1.0)) + 1.0 }
         val maxIdf = idf.values.maxOrNull() ?: 1.0
-        val vectors = HashMap<String, Map<String, Double>>(unique.size * 2)
+        val raw = HashMap<String, HashMap<String, Double>>(unique.size * 2)
         for (item in unique) {
             val v = HashMap<String, Double>()
             val genres = item.genres.ifEmpty { genresFromCategory(item.categoryName) }
@@ -91,6 +97,10 @@ class RecommendationEngine(
             item.cast.take(5).forEach { v.add("a:${norm(it)}", W_CAST) }
             item.year?.let { v.add("y:${it / 10 * 10}", W_DECADE) }
             item.categoryId?.let { v.add("c:${item.kind.key}:$it", W_CATEGORY) }
+            tokenize(item.categoryName).distinct().forEach { v.add("cw:$it", W_CATEGORY_WORDS) }
+            val (tags, rest) = titleParts(item.title)
+            tags.forEach { v.add("t:$it", W_TAG) }
+            tokenize(rest).distinct().take(MAX_TITLE_TERMS).forEach { v.add("w:$it", W_TITLE) }
             val tokens = plotTokens[item.key].orEmpty()
             if (tokens.isNotEmpty()) {
                 val tf = tokens.groupingBy { it }.eachCount()
@@ -101,7 +111,19 @@ class RecommendationEngine(
                     .take(MAX_PLOT_TERMS)
                     .forEach { (t, w) -> v.add("p:$t", W_PLOT * w) }
             }
-            vectors[item.key] = normalise(v)
+            raw[item.key] = v
+        }
+        // Soft IDF over every non-plot feature (plot terms already carry their own TF-IDF).
+        val featureDf = HashMap<String, Int>()
+        raw.values.forEach { v -> v.keys.forEach { if (!it.startsWith("p:")) featureDf[it] = (featureDf[it] ?: 0) + 1 } }
+        val maxFeatureIdf = ln(n + 1.0) + 1.0
+        val vectors = HashMap<String, Map<String, Double>>(unique.size * 2)
+        for ((key, v) in raw) {
+            val scaled = v.mapValues { (term, w) ->
+                val d = featureDf[term] ?: return@mapValues w
+                w * (0.4 + 0.6 * (ln((n + 1.0) / (d + 1.0)) + 1.0) / maxFeatureIdf)
+            }
+            vectors[key] = normalise(scaled)
         }
         return CatalogIndex(unique, vectors)
     }
@@ -212,7 +234,11 @@ class RecommendationEngine(
         const val W_CAST = 1.5
         const val W_DECADE = 1.0
         const val W_PLOT = 1.0
-        const val W_CATEGORY = 0.75
+        const val W_CATEGORY = 1.5
+        const val W_CATEGORY_WORDS = 1.5
+        const val W_TAG = 2.5
+        const val W_TITLE = 1.0
+        private const val MAX_TITLE_TERMS = 6
         const val HALF_LIFE_DAYS = 60.0
         const val NOVELTY_DAYS = 14L
         const val NOVELTY_BONUS = 0.05
@@ -251,6 +277,22 @@ class RecommendationEngine(
         internal fun tokenize(text: String?): List<String> {
             if (text.isNullOrBlank()) return emptyList()
             return text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 2 && it !in stopWords && !it.all(Char::isDigit) }
+        }
+
+        /**
+         * Splits an IPTV title into its prefix tags and the rest: "4K-AR: The Odyssey (2026)" -> ([4k, ar],
+         * "The Odyssey (2026)"), "AR| News" -> ([ar], "News"). A prefix is a short run (<= 14 chars) of
+         * capital letters, digits, '-' or spaces before the first ':' or '|'; anything else has no tags.
+         */
+        internal fun titleParts(title: String): Pair<List<String>, String> {
+            val start = if (title.startsWith("|")) 1 else 0
+            val cut = (start until title.length).firstOrNull { title[it] == ':' || title[it] == '|' } ?: -1
+            if (cut <= start || cut - start > 14) return emptyList<String>() to title
+            val prefix = title.substring(start, cut)
+            // Tags are written in capitals ("AR", "4K-AR", "AR-SUBS"); "Mission: Impossible" is a title, not a tag.
+            if (!prefix.all { it.isLetterOrDigit() || it == '-' || it == ' ' || it == '_' } || prefix.any { it.isLowerCase() }) return emptyList<String>() to title
+            val tags = prefix.split('-', ' ', '_').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+            return tags to title.substring(cut + 1).trim()
         }
 
         internal fun norm(value: String) = value.trim().lowercase().replace(Regex("\\s+"), " ").let { if (it == "science fiction") "sci-fi" else it }

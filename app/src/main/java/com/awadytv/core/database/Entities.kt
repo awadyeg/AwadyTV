@@ -178,8 +178,10 @@ object LikeSource {
     const val IMPLICIT = "implicit"
     /** Legacy: abandoning < 10 % used to count as a dislike. No longer written and ignored when read. */
     const val IMPLICIT_NEGATIVE = "implicit_negative"
-    /** Explicit thumbs-down from the detail page. */
+    /** Explicit thumbs-down (detail page or the taste trainer). */
     const val DISLIKE = "dislike"
+    /** Skipped in the taste trainer: not a signal, only keeps the card from coming back for a while. */
+    const val SKIP = "skip"
 }
 
 @Entity(tableName = "likes", primaryKeys = ["profileId", "kind", "itemId"])

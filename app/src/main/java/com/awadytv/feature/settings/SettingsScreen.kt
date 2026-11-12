@@ -192,6 +192,13 @@ fun SettingsScreen(navigator: AppNavigator, viewModel: SettingsViewModel = hiltV
                     }
                     Section.Ai -> {
                         item {
+                            SettingRow(
+                                "Train your taste",
+                                "Rate titles one by one: Right love it, Left not for me, Up skip. New titles every time.",
+                                onClick = navigator::openTasteTrainer,
+                            )
+                        }
+                        item {
                             ToggleRow(
                                 "AI recommendations",
                                 "On-device picks from the movies and series you like. Nothing leaves this TV.",

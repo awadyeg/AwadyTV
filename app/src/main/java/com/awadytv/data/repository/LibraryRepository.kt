@@ -73,6 +73,26 @@ class LibraryRepository @Inject constructor(
         _likeChanges.tryEmit(profileId)
     }
 
+    enum class Verdict { LIKE, DISLIKE, SKIP }
+
+    /**
+     * A taste-trainer answer. With [notify] false the recommendations are not recomputed per card (that
+     * takes seconds on a TV); call [notifyLikesChanged] once when the session ends.
+     */
+    suspend fun rate(profileId: Long, kind: ContentKind, itemId: Long, verdict: Verdict, notify: Boolean = false) {
+        val source = when (verdict) {
+            Verdict.LIKE -> LikeSource.EXPLICIT
+            Verdict.DISLIKE -> LikeSource.DISLIKE
+            Verdict.SKIP -> LikeSource.SKIP
+        }
+        likes.upsert(LikeEntity(profileId, kind.key, itemId, System.currentTimeMillis(), source))
+        if (notify) _likeChanges.tryEmit(profileId)
+    }
+
+    fun notifyLikesChanged(profileId: Long) {
+        _likeChanges.tryEmit(profileId)
+    }
+
     fun continueWatching(profileId: Long, limit: Int = 20): Flow<List<WatchProgress>> =
         progress.observeContinueWatching(profileId, limit).map { list -> list.map { it.toDomain() } }
 

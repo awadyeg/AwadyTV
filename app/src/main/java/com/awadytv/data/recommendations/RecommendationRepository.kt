@@ -37,6 +37,20 @@ import javax.inject.Singleton
 /** A recommendation shelf ready for the UI. */
 data class RecommendationShelf(val id: String, val title: String, val items: List<PosterItem>)
 
+/** One card of the taste trainer. [why] says why it is shown ("Picked for you" or the category explored). */
+data class TasteCard(
+    val kind: ContentKind,
+    val id: Long,
+    val title: String,
+    val image: String?,
+    val backdrop: String?,
+    val year: Int?,
+    val rating: Double?,
+    val genre: String?,
+    val plot: String?,
+    val why: String,
+)
+
 /**
  * Runs [RecommendationEngine] over the cached catalog and stores results in Room with a 6h TTL.
  * Recomputes immediately (debounced) after a like changes. An optional re-ranker (see
@@ -64,7 +78,8 @@ class RecommendationRepository @Inject constructor(
     init {
         @OptIn(FlowPreview::class)
         appScope.launch {
-            library.likeChanges.debounce(800).collect { profileId -> runCatching { refresh(profileId, force = true) } }
+            // A like does not change the catalog, so reuse the index (rebuilding it takes tens of seconds on a TV).
+            library.likeChanges.debounce(800).collect { profileId -> runCatching { refresh(profileId, force = true, rebuildIndex = false) } }
         }
     }
 
@@ -91,7 +106,7 @@ class RecommendationRepository @Inject constructor(
     }
 
     /** Recomputes when the cache is older than 6h (or always with [force]). */
-    suspend fun refresh(profileId: Long, force: Boolean = false) = mutex.withLock {
+    suspend fun refresh(profileId: Long, force: Boolean = false, rebuildIndex: Boolean = true) = mutex.withLock {
         withContext(Dispatchers.Default) {
             val now = System.currentTimeMillis()
             if (!settings.current().aiRecommendations) return@withContext
@@ -99,7 +114,7 @@ class RecommendationRepository @Inject constructor(
                 val last = dao.lastComputedAt(profileId)
                 if (last != null && now - last < TTL_MS && dao.forYouCount(profileId) > 0) return@withContext
             }
-            val index = indexFor(profileId, rebuild = true)
+            val index = indexFor(profileId, rebuild = rebuildIndex)
             val input = engineInput(profileId, now)
             val output = engine.recommend(index, input)
             val shelves = output.shelves.toMutableList()
@@ -191,6 +206,61 @@ class RecommendationRepository @Inject constructor(
     }
 
     private fun ratingLabel(rating: Double?): String? = rating?.takeIf { it > 0 }?.let { "★ " + String.format(java.util.Locale.US, "%.1f", it) }
+
+    /**
+     * Cards for the taste trainer: titles not yet rated (skips come back after [SKIP_DAYS]), about a third
+     * from the current "For you" ranking (to confirm or correct it) and the rest explored across categories,
+     * round-robin, preferring well rated titles, so every session shows different corners of the catalog.
+     */
+    suspend fun tasteCards(profileId: Long, count: Int = 30, exclude: Set<String> = emptySet()): List<TasteCard> = withContext(Dispatchers.Default) {
+        // Needs only titles, categories and ratings, not the feature index: never wait for the (slow,
+        // mutex-held) index build of a running recommendation pass. Reuse the index's item list if it exists.
+        val items = cachedIndex?.takeIf { it.first == "$profileId" }?.second?.items ?: run {
+            val movieCats = movies.categoryMap(profileId)
+            val seriesCats = series.categoryMap(profileId)
+            movies.allEntities(profileId).map { it.toRecItem(movieCats) } + series.allEntities(profileId).map { it.toRecItem(seriesCats) }
+        }
+        val now = System.currentTimeMillis()
+        val answered = likes.all(profileId)
+            .filter { it.source != LikeSource.SKIP || now - it.likedAt < SKIP_DAYS * 86_400_000L }
+            .map { "${it.kind}:${it.itemId}" }.toSet()
+        val blocked = if (!parental.locked()) emptySet() else items.filter { AdultContent.isAdult(it.categoryName) }.map { it.key }.toSet()
+        val skip = answered + exclude + blocked
+        val random = kotlin.random.Random(now)
+
+        val forYouRows = dao.observe(profileId).first().filter { it.shelf.startsWith(FOR_YOU_PREFIX) }.sortedBy { it.position }
+        val picked = forYouRows.map { "${it.itemKind}:${it.itemId}" }.filter { it !in skip }.take(60).shuffled(random).take(count / 3)
+        val chosen = LinkedHashMap<String, String>() // key -> why
+        picked.forEach { chosen[it] = "Picked for you" }
+
+        val byCategory = items.filter { it.key !in skip && it.key !in chosen && it.categoryId != null }
+            .groupBy { "${it.kind.key}:${it.categoryId}" }
+            .mapValues { (_, list) -> list.sortedByDescending { it.rating ?: 0.0 }.take(40).shuffled(random).toMutableList() }
+            .toMutableMap()
+        val categoryOrder = byCategory.keys.shuffled(random).toMutableList()
+        while (chosen.size < count && categoryOrder.isNotEmpty()) {
+            val iterator = categoryOrder.iterator()
+            while (iterator.hasNext() && chosen.size < count) {
+                val bucket = byCategory.getValue(iterator.next())
+                val item = bucket.removeFirstOrNull()
+                if (item == null) { iterator.remove(); continue }
+                chosen[item.key] = item.categoryName?.let { "Exploring $it" } ?: "Exploring"
+            }
+        }
+
+        val keys = chosen.keys.shuffled(random)
+        val movieMap = movies.byIds(profileId, keys.filter { it.startsWith(ContentKind.MOVIE.key + ":") }.map { it.substringAfter(':').toLong() }).associateBy { it.streamId }
+        val seriesMap = series.byIds(profileId, keys.filter { it.startsWith(ContentKind.SERIES.key + ":") }.map { it.substringAfter(':').toLong() }).associateBy { it.seriesId }
+        keys.mapNotNull { key ->
+            val id = key.substringAfter(':').toLong()
+            val why = chosen.getValue(key)
+            if (key.startsWith(ContentKind.MOVIE.key + ":")) {
+                movieMap[id]?.takeIf { !it.icon.isNullOrBlank() }?.let { TasteCard(ContentKind.MOVIE, it.streamId, it.name, it.icon, it.backdrop, it.year, it.rating, it.genre, it.plot, why) }
+            } else {
+                seriesMap[id]?.takeIf { !it.cover.isNullOrBlank() }?.let { TasteCard(ContentKind.SERIES, it.seriesId, it.name, it.cover, it.backdrop, it.year, it.rating, it.genre, it.plot, why) }
+            }
+        }
+    }
 
     /** Re-ranker candidates: the local top-60. */
     private fun widen(index: CatalogIndex, input: EngineInput, top: List<ScoredItem>): List<ScoredItem> {
@@ -295,6 +365,7 @@ class RecommendationRepository @Inject constructor(
     companion object {
         const val TTL_MS = 6L * 3600 * 1000
         const val FOR_YOU_PREFIX = "foryou:"
+        private const val SKIP_DAYS = 30L
         private const val FOR_YOU_SIZE = 200
         private const val MAX_ITEMS = 15_000
     }

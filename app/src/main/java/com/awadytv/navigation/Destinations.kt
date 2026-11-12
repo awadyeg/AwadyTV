@@ -13,4 +13,5 @@ fun NavGraphBuilder.detailAndPlayerDestinations(navigator: AppNavigator) {
     composable<MovieDetailRoute> { MovieDetailScreen(navigator) }
     composable<SeriesDetailRoute> { SeriesDetailScreen(navigator) }
     composable<VodPlayerRoute> { VodPlayerScreen(navigator) }
+    composable<TasteTrainerRoute> { com.awadytv.feature.taste.TasteTrainerScreen(navigator) }
 }

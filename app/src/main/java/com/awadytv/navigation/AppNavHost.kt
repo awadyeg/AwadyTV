@@ -67,6 +67,7 @@ class NavControllerNavigator(private val nav: NavHostController) : AppNavigator 
     override fun playEpisode(seriesId: Long, episodeId: Long, fromStart: Boolean) =
         nav.navigate(VodPlayerRoute("episode", episodeId, seriesId, fromStart))
     override fun playLive(streamId: Long, categoryId: String?) = nav.navigate(LivePlayerRoute(streamId, categoryId))
+    override fun openTasteTrainer() = nav.navigate(TasteTrainerRoute) { launchSingleTop = true }
     override fun addProfile() = nav.navigate(LoginRoute(addProfile = true))
     override fun resync(profileId: Long) = resetTo(SyncRoute(profileId))
     override fun signedOut() = resetTo(LoginRoute())

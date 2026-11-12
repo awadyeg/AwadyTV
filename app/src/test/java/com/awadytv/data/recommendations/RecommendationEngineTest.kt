@@ -173,4 +173,33 @@ class RecommendationEngineTest {
         assertFalse(similar.any { it.item.key == "movie:1" || it.item.key == "movie:2" })
         assertEquals(3, similar.size)
     }
+
+    @Test fun `title prefixes become language and quality tags`() {
+        assertEquals(listOf("4k", "ar") to "The Odyssey (2026)", RecommendationEngine.titleParts("4K-AR: The Odyssey (2026)"))
+        assertEquals(listOf("ar", "subs") to "Savage Prey", RecommendationEngine.titleParts("AR-SUBS: Savage Prey"))
+        assertEquals(listOf("ar") to "NEWS", RecommendationEngine.titleParts("AR| NEWS"))
+        assertEquals(emptyList<String>() to "Mission: Impossible", RecommendationEngine.titleParts("Mission: Impossible"))
+        assertEquals(emptyList<String>() to "Heat", RecommendationEngine.titleParts("Heat"))
+    }
+
+    @Test fun `without any metadata, liking an Arabic title favours Arabic titles over other languages`() {
+        // Like a real Xtream movie list: names and categories only, no genre / cast / plot.
+        fun bare(id: Long, title: String, category: String, categoryName: String) =
+            RecItem(ContentKind.MOVIE, id, title, rating = 7.0, addedAtSec = (now - 400 * day) / 1000, categoryId = category, categoryName = categoryName)
+        val bareCatalog = listOf(
+            bare(1, "AR: Film One (2020)", "1", "Arabic movies"),
+            bare(2, "AR: Film Two (2021)", "1", "Arabic movies"),
+            bare(3, "AR-SUBS: Foreign Film (2021)", "2", "Foreign movies subtitled"),
+            bare(4, "DE: Sonic the Hedgehog (2020)", "3", "German movies"),
+            bare(5, "EN: Hairspray (2007)", "4", "English movies"),
+            bare(6, "AR: Film Three (2019)", "5", "Arabic comedy"),
+        )
+        val bareIndex = engine.buildIndex(bareCatalog)
+        val rec = engine.recommend(bareIndex, EngineInput(signals = listOf(like(ContentKind.MOVIE, 1)), nowMs = now))
+            .shelves.first { it.id == RecommendationEngine.SHELF_RECOMMENDED }.items.map { it.item.id }
+        assertEquals(listOf(2L, 6L), rec.take(2)) // same language first
+        fun rank(id: Long) = rec.indexOf(id).let { if (it < 0) Int.MAX_VALUE else it }
+        assertTrue(rank(3) < rank(4)) // Arabic-subtitled beats German
+        assertTrue(rank(4) == Int.MAX_VALUE || rank(4) > rank(6))
+    }
 }
