@@ -106,6 +106,9 @@ class VodPlayerViewModel @Inject constructor(
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.update { it.copy(isPlaying = isPlaying, error = if (isPlaying) null else it.error) }
+            // The auto-hide timer only hides while playing; if it ran out while the stream was still loading
+            // (e.g. resuming after a relaunch) the controls stayed up. Restart it once playback really starts.
+            if (isPlaying && _state.value.controlsVisible && !_state.value.tracksVisible) showControls()
         }
 
         override fun onTracksChanged(tracks: Tracks) = updateTracks(tracks)

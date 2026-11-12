@@ -43,6 +43,7 @@ class VideoSurfaceLayout(context: Context) : FrameLayout(context), Player.Listen
         newPlayer.setVideoSurfaceView(surface)
         newPlayer.addListener(this)
         onVideoSizeChanged(newPlayer.videoSize)
+        updateKeepScreenOn()
     }
 
     fun unbind() {
@@ -51,6 +52,22 @@ class VideoSurfaceLayout(context: Context) : FrameLayout(context), Player.Listen
             it.clearVideoSurfaceView(surface)
         }
         player = null
+        keepScreenOn = false
+    }
+
+    /**
+     * Keeps the TV awake while video is playing or about to (buffering with play requested). Without it the
+     * TV's sleep / screensaver timer kept running mid-film and closed the app. PlayerView does this itself;
+     * this custom surface has to. Paused or stopped video lets the TV sleep as usual.
+     */
+    private fun updateKeepScreenOn() {
+        val p = player
+        keepScreenOn = p != null && p.playWhenReady &&
+            (p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_BUFFERING)
+    }
+
+    override fun onEvents(player: Player, events: Player.Events) {
+        if (events.containsAny(Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_PLAY_WHEN_READY_CHANGED)) updateKeepScreenOn()
     }
 
     fun styleSubtitles(scale: Float, background: Boolean) {
